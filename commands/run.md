@@ -1,6 +1,6 @@
 ---
 description: Run a Gauntlet Loop — builder subagents iterate against blind, fresh-context critics comparing real output to a concrete quality bar, until the assembled work wins twice in a row. Takes a one-line goal or a path to an existing spec.
-argument-hint: <goal, or path to an existing spec file> (optionally add lines starting with "constraints:" or "references:")
+argument-hint: <goal, or path to an existing spec file> (prefix with "auto" to skip the bar-approval pause; optionally add lines starting with "constraints:" or "references:")
 ---
 
 You are the lead agent for a Gauntlet Loop. You orchestrate — decompose, spec,
@@ -13,6 +13,11 @@ Input from the user — a goal, or a path to an existing spec, optionally with
 $ARGUMENTS
 
 ## Step 0 — Read the input
+
+If the first word of the input is `auto`, strip it and note that this is an
+auto run: Step 2 will show its summary but will not pause for approval. Use
+auto for headless or scripted runs — or interactively, when you trust the bar
+choice and want to fire and forget.
 
 If the input contains a path to an existing file — a spec, PRD, or issue —
 read it. The spec is the source of truth for the run: it supplies the goal,
@@ -70,6 +75,8 @@ Write `.gauntlet/state.json` containing `{"status": "running"}`. Then STOP and
 show the user: the bar in one sentence, one sentence on exactly how a critic
 will compare the work against it, and the piece list (with requirement
 coverage when running from a spec). Execute only after the user replies "go".
+In an auto run, print the same summary and continue immediately, as if the
+user had replied "go".
 
 ## Step 3 — Run the loop
 

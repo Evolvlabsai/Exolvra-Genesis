@@ -23,7 +23,8 @@ the assembled work wins that comparison twice in a row.
    User constraints become hard gates checked before every comparison.
 2. **Decompose.** The lead splits the goal into the smallest independently
    judgeable pieces and writes a Task Spec for each, then shows you the bar
-   and the piece list and waits for "go".
+   and the piece list and waits for "go" (or runs straight through in `auto`
+   mode).
 3. **Build.** A `gauntlet-builder` subagent implements one spec end to end.
    Its report is a claim — the lead re-runs the verification command itself
    before anything proceeds.
@@ -62,6 +63,26 @@ Pieces are derived from its requirements, full requirement coverage is a hard
 gate for the assembled result, and the final report maps every requirement to
 the evidence that satisfies it. The bar still applies: the spec tells the
 critics what must be true; the bar tells them what good looks like.
+
+## Headless & CI
+
+Prefix the arguments with `auto` and Gauntlet won't pause for bar approval —
+it prints the bar and the piece list, then keeps going. Combined with Claude
+Code's headless mode, a full run is one line from any shell, script, or CI
+job:
+
+```
+claude -p "/gauntlet:run auto specs/checkout-flow.md" \
+  --permission-mode acceptEdits --max-turns 80
+```
+
+Add `--output-format stream-json` for machine-readable events, and treat
+`--max-turns` as your cost guard — it stops the run at the cap instead of
+looping forever. Prefer to approve the bar even when headless? Run without
+`auto`, capture the session id from `--output-format json`, review the
+printed bar, then continue with `claude -p --resume <session-id> "go"`. To
+embed the same loop inside your own tools, the Claude Agent SDK runs this
+exact harness as a TypeScript or Python library.
 
 ## The two contracts
 
