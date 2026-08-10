@@ -1,0 +1,15 @@
+{
+  "_comment": "OPT-IN. Copy the 'hooks' block below into your project's .claude/settings.json to enable the gate. It refuses to let a session end while .gauntlet/state.json still says running — turning the win condition from a convention into a mechanism. Nothing in the plugin depends on it.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "in=$(cat); printf %s \"$in\" | grep -q '\"stop_hook_active\": *true' && exit 0; [ -f .gauntlet/state.json ] && grep -q '\"status\": *\"running\"' .gauntlet/state.json && echo '{\"decision\": \"block\", \"reason\": \"Gauntlet run is still active - the win condition (two consecutive blind wins by fresh critics) has not been met. Continue the loop, or set .gauntlet/state.json status to stopped if the user ended the run.\"}'; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
