@@ -1,0 +1,334 @@
+<!doctype html>
+<!--
+  GAUNTLET PROGRESS TEMPLATE
+  ==========================
+  LEAD AGENT: update ONLY the JSON inside <script id="gauntlet-data">.
+  Never edit the markup, styles, or renderer — that is what keeps this page
+  identical for every user of the plugin. Escape any "</" inside JSON string
+  values as "<\/". In gap/basis/note/desc strings, `backticks` render as
+  inline code; everything else is plain text.
+
+  JSON contract (all fields optional unless noted; omit what a run doesn't use):
+  {
+    "goal":    string,                    // required — one line
+    "spec":    string,                    // spec path, when running from a spec
+    "mode":    "review" | "auto",
+    "status":  "starting"|"awaiting-go"|"running"|"complete"|"stopped"|"blocked",
+    "phase":   string,                    // free text, e.g. "Wave 1 — P1 round 5 · 5 pieces, 3 waves"
+    "streak":  number,                    // consecutive whole-artifact wins
+    "win_target": number,                 // default 2
+    "bar": [ { "name": string, "desc": string } ],   // captured bar artifacts
+    "pieces": [
+      { "id": "P1", "name": string, "note": string,  // note = current gap/state, shown under name
+        "covers": "C1–C5, R3", "wave": number,
+        "status": "pending"|"building"|"judging"|"won"|"blocked",
+        "rounds": number }
+    ],
+    "rounds": [                            // append in order; rendered as-is
+      { "n": number, "piece": "P1", "verdict": "win"|"loss",
+        "gap": string, "basis": string }   // basis = evidence; fills the Verdict-history table
+    ],
+    "note":  { "label": string, "text": string },    // lead's synthesis callout, e.g. "Converging."
+    "current": {                           // latest side-by-side
+      "round": number,
+      "panels": [ { "label": string, "type": "text"|"image", "text": string, "src": string } ],
+      "note": string
+    },
+    "integrity": [ string ]                // footer lines: spec hash, bar pin, critic isolation
+  }
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="20">
+<title>Gauntlet — live progress</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #fff; --ink: #1a1a19; --muted: #6b6a66;
+    --line: #e5e2dc; --win: #1a7f52; --loss: #b4341f; --pend: #8a8880;
+    --run: #b8761f; --accent: #3b3a37;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16161a; --panel: #1d1d22; --ink: #e9e8e4; --muted: #97968f;
+      --line: #2e2e35; --win: #4bbd85; --loss: #ef6a4f; --pend: #74736d;
+      --run: #e0a24a; --accent: #cfcec8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 24px 64px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 26px; }
+  h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em;
+       color: var(--muted); margin: 34px 0 12px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13.5px; }
+  .status { display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: 0.08em;
+    padding: 5px 9px; border-radius: 4px; text-transform: uppercase; border: 1px solid currentColor; }
+  .s-running, .s-starting { color: var(--run); }
+  .s-awaiting-go { color: var(--pend); }
+  .s-complete { color: var(--win); }
+  .s-stopped, .s-blocked { color: var(--loss); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+       color: var(--muted); font-weight: 600; padding: 0 12px 9px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 12px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .id { font: 600 13px var(--mono); }
+  .v { font: 600 11px/1 var(--mono); letter-spacing: 0.06em; }
+  .v-win { color: var(--win); } .v-loss { color: var(--loss); }
+  .v-pending { color: var(--pend); } .v-building { color: var(--run); }
+  .covers { font: 11.5px var(--mono); color: var(--muted); }
+  .gap { color: var(--muted); font-size: 13px; }
+  .bar-item { display: flex; gap: 14px; padding: 7px 0; align-items: baseline; }
+  .bar-item code { font: 12px var(--mono); color: var(--accent); }
+  .bar-item span { color: var(--muted); font-size: 13px; }
+  .empty { color: var(--muted); font-size: 13.5px; font-style: italic; padding: 6px 0; }
+  .wave { font: 600 11px var(--mono); color: var(--muted); letter-spacing: 0.06em; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 12.5px; }
+  code.path, .fmt code { font: 12px var(--mono); color: var(--accent); }
+  pre { font: 12px/1.5 var(--mono); background: var(--bg); border: 1px solid var(--line);
+        border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 0; white-space: pre-wrap; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .colhead { font: 600 11px var(--mono); letter-spacing: 0.06em; color: var(--muted);
+             text-transform: uppercase; margin-bottom: 7px; }
+  .cols img { width: 100%; display: block; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .note { border-left: 3px solid var(--win); padding-left: 13px; margin-top: 14px;
+          color: var(--muted); font-size: 13px; }
+  .note b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<script id="gauntlet-data" type="application/json">
+{
+  "goal": "",
+  "status": "starting",
+  "streak": 0,
+  "win_target": 2,
+  "bar": [],
+  "pieces": [],
+  "rounds": []
+}
+</script>
+
+<header>
+  <h1 id="title">Gauntlet</h1>
+  <div class="sub"><span class="status" id="status"></span>&nbsp; <span id="subline"></span></div>
+</header>
+
+<h2>The bar</h2>
+<div class="panel" id="bar"></div>
+
+<h2>Pieces</h2>
+<div class="panel" id="pieces"></div>
+
+<h2>Round log</h2>
+<div class="panel" id="roundlog"></div>
+
+<section id="sxs" style="display:none">
+  <h2 id="sxsHead">Latest side-by-side</h2>
+  <div class="panel" id="sxsBody"></div>
+</section>
+
+<section id="hist" style="display:none">
+  <h2>Verdict history</h2>
+  <div class="panel" id="histBody"></div>
+</section>
+
+<footer id="foot"></footer>
+
+</div>
+<script>
+(function () {
+  var d;
+  try { d = JSON.parse(document.getElementById('gauntlet-data').textContent); }
+  catch (e) {
+    document.body.insertAdjacentText('beforeend',
+      'Progress data is not valid JSON - the lead agent should fix the #gauntlet-data block.');
+    return;
+  }
+  var TICK = '\u0060';
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  // `backticks` -> inline code; everything else stays plain text
+  function fmt(s) {
+    var frag = document.createDocumentFragment();
+    String(s == null ? '' : s).split(TICK).forEach(function (part, i) {
+      if (i % 2 === 1) { var c = el('code', null, part); frag.appendChild(c); }
+      else if (part) frag.appendChild(document.createTextNode(part));
+    });
+    var span = el('span', 'fmt'); span.appendChild(frag); return span;
+  }
+  function vclass(s) {
+    if (s === 'win' || s === 'won') return 'v v-win';
+    if (s === 'loss' || s === 'blocked') return 'v v-loss';
+    if (s === 'building' || s === 'judging') return 'v v-building';
+    return 'v v-pending';
+  }
+
+  // Header
+  var title = document.getElementById('title');
+  title.textContent = 'Gauntlet — ';
+  if (d.spec) { var c = el('code', 'path', d.spec); title.appendChild(c); }
+  else title.appendChild(document.createTextNode(d.goal || 'no goal set yet'));
+
+  var st = document.getElementById('status');
+  st.textContent = (d.status || 'starting').replace('-', ' ');
+  st.className = 'status s-' + (d.status || 'starting');
+
+  var bits = [];
+  if (d.phase) bits.push(d.phase);
+  bits.push(((d.rounds || []).length) + ' rounds judged');
+  bits.push((d.streak || 0) + ' consecutive wins');
+  if (d.mode) bits.push(d.mode + ' mode');
+  document.getElementById('subline').textContent = bits.join('  ·  ');
+
+  // The bar
+  var bar = document.getElementById('bar');
+  if (!d.bar || !d.bar.length) {
+    bar.appendChild(el('div', 'empty', 'Not captured yet — artifacts land in .gauntlet/bar/ during Step 1.'));
+  } else d.bar.forEach(function (b) {
+    var row = el('div', 'bar-item');
+    row.appendChild(el('code', null, b.name || ''));
+    var s = el('span'); s.appendChild(fmt(b.desc || '')); row.appendChild(s);
+    bar.appendChild(row);
+  });
+
+  // Pieces
+  var pieces = document.getElementById('pieces');
+  if (!d.pieces || !d.pieces.length) {
+    pieces.appendChild(el('div', 'empty', 'No pieces yet — the table fills in after decomposition.'));
+  } else {
+    var hasCovers = d.pieces.some(function (p) { return p.covers; });
+    var hasWave = d.pieces.some(function (p) { return p.wave != null; });
+    var t = el('table'), th = el('thead'), tr = el('tr');
+    [['#', 44], ['Piece', 0]].concat(hasCovers ? [['Covers', 150]] : [])
+      .concat(hasWave ? [['Wave', 66]] : [])
+      .concat([['Verdict', 88], ['Rounds', 62]])
+      .forEach(function (h) {
+        var cell = el('th', null, h[0]);
+        if (h[1]) cell.style.width = h[1] + 'px';
+        tr.appendChild(cell);
+      });
+    th.appendChild(tr); t.appendChild(th);
+    var tb = el('tbody');
+    d.pieces.forEach(function (p) {
+      var r = el('tr');
+      r.appendChild(el('td', 'id', p.id || ''));
+      var nm = el('td'); nm.appendChild(fmt(p.name || ''));
+      if (p.note) { var g = el('div', 'gap'); g.appendChild(fmt(p.note)); nm.appendChild(g); }
+      r.appendChild(nm);
+      if (hasCovers) r.appendChild(el('td', 'covers', p.covers || ''));
+      if (hasWave) r.appendChild(el('td', 'wave', p.wave != null ? String(p.wave) : '—'));
+      r.appendChild(el('td', vclass(p.status), (p.status || 'pending').toUpperCase()));
+      r.appendChild(el('td', null, p.rounds ? String(p.rounds) : '—'));
+      tb.appendChild(r);
+    });
+    t.appendChild(tb); pieces.appendChild(t);
+  }
+
+  // Round log + synthesis note
+  var log = document.getElementById('roundlog');
+  if (!d.rounds || !d.rounds.length) {
+    log.appendChild(el('div', 'empty', d.status === 'awaiting-go'
+      ? 'Bar and pieces are set — reply "go" in the session to start round 1.'
+      : 'The log starts with round 1.'));
+  } else {
+    var t2 = el('table'), th2 = el('thead'), tr2 = el('tr');
+    [['Round', 56], ['Piece', 52], ['Verdict', 78], ['Gap', 0]].forEach(function (h) {
+      var cell = el('th', null, h[0]);
+      if (h[1]) cell.style.width = h[1] + 'px';
+      tr2.appendChild(cell);
+    });
+    th2.appendChild(tr2); t2.appendChild(th2);
+    var tb2 = el('tbody');
+    d.rounds.forEach(function (r) {
+      var row = el('tr');
+      row.appendChild(el('td', 'id', String(r.n)));
+      row.appendChild(el('td', 'id', r.piece || ''));
+      row.appendChild(el('td', vclass(r.verdict), (r.verdict || '').toUpperCase()));
+      var g = el('td'); g.appendChild(fmt(r.gap || '')); row.appendChild(g);
+      tb2.appendChild(row);
+    });
+    t2.appendChild(tb2); log.appendChild(t2);
+  }
+  if (d.note && d.note.text) {
+    var n = el('div', 'note');
+    if (d.note.label) { n.appendChild(el('b', null, d.note.label + ' ')); }
+    n.appendChild(fmt(d.note.text));
+    log.appendChild(n);
+  }
+
+  // Latest side-by-side
+  if (d.current && d.current.panels && d.current.panels.length) {
+    document.getElementById('sxs').style.display = '';
+    document.getElementById('sxsHead').textContent =
+      'Latest side-by-side' + (d.current.round ? ' — round ' + d.current.round : '');
+    var body = document.getElementById('sxsBody');
+    var cols = el('div', 'cols');
+    d.current.panels.forEach(function (p) {
+      var col = el('div');
+      col.appendChild(el('div', 'colhead', p.label || ''));
+      if (p.type === 'image' && p.src) {
+        var img = document.createElement('img'); img.src = p.src; img.alt = p.label || '';
+        col.appendChild(img);
+      } else col.appendChild(el('pre', null, p.text || '—'));
+      cols.appendChild(col);
+    });
+    body.appendChild(cols);
+    if (d.current.note) {
+      var cn = el('div', 'gap'); cn.style.marginTop = '14px';
+      cn.appendChild(fmt(d.current.note)); body.appendChild(cn);
+    }
+  }
+
+  // Verdict history (renders only when any round carries a basis)
+  var withBasis = (d.rounds || []).filter(function (r) { return r.basis; });
+  if (withBasis.length) {
+    document.getElementById('hist').style.display = '';
+    var hb = document.getElementById('histBody');
+    var t3 = el('table'), th3 = el('thead'), tr3 = el('tr');
+    [['Round', 56], ['Piece', 52], ['Verdict', 78], ['Basis', 0]].forEach(function (h) {
+      var cell = el('th', null, h[0]);
+      if (h[1]) cell.style.width = h[1] + 'px';
+      tr3.appendChild(cell);
+    });
+    th3.appendChild(tr3); t3.appendChild(th3);
+    var tb3 = el('tbody');
+    withBasis.forEach(function (r) {
+      var row = el('tr');
+      row.appendChild(el('td', 'id', String(r.n)));
+      row.appendChild(el('td', 'id', r.piece || ''));
+      row.appendChild(el('td', vclass(r.verdict), (r.verdict || '').toUpperCase()));
+      var b = el('td'); b.appendChild(fmt(r.basis)); row.appendChild(b);
+      tb3.appendChild(row);
+    });
+    t3.appendChild(tb3); hb.appendChild(t3);
+  }
+
+  // Footer
+  var foot = document.getElementById('foot');
+  (d.integrity || []).forEach(function (line) {
+    var s = el('span'); s.appendChild(fmt(line));
+    foot.appendChild(s); foot.appendChild(document.createTextNode(' '));
+  });
+  foot.appendChild(document.createTextNode(
+    'Snapshots per round under .gauntlet/runs/. Refreshes every 20s.'));
+})();
+</script>
+</body>
+</html>

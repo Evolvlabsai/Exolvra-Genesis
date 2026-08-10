@@ -36,7 +36,9 @@ the assembled work wins that comparison twice in a row.
 
 A live progress page (`.gauntlet/progress.html`) shows the round log,
 per-piece status, the latest side-by-side, and verdict history while it runs,
-with per-round snapshots under `.gauntlet/runs/`.
+with per-round snapshots under `.gauntlet/runs/`. The page is rendered from a
+template shipped with the plugin — the lead only ever swaps out one JSON
+block — so every run, on every user's machine, gets the same card.
 
 ## Quickstart
 
@@ -63,6 +65,16 @@ Pieces are derived from its requirements, full requirement coverage is a hard
 gate for the assembled result, and the final report maps every requirement to
 the evidence that satisfies it. The bar still applies: the spec tells the
 critics what must be true; the bar tells them what good looks like.
+
+## No spec yet? Interview
+
+`/gauntlet:interview` turns an idea into a run-ready spec by asking one
+question at a time — the thing itself, tech stack, must-haves, hard gates,
+non-goals, references — then builds a single-file interactive HTML mockup
+and iterates on it with you in the browser. The approved mockup lands in the
+spec's references as the primary visual bar candidate, and the command ends
+by printing the exact `/gauntlet:run` line to fire. Point it at an existing
+spec to modify the pair instead of starting over.
 
 ## Headless & CI
 
@@ -123,8 +135,8 @@ default and nothing depends on it.
 ## What it is not
 
 - **Not a framework.** No config file, no CLI wrapper, no state database, no
-  required MCP servers. Two agents, one command, plain Markdown you can read
-  in five minutes.
+  required MCP servers. Two agents, two commands, one page template — small
+  enough to read in minutes.
 - **Not a CI system.** It runs inside a Claude Code session and ends when the
   work wins; your CI still owns the repo.
 - **Not a prompt library.** There is exactly one loop, and the bar — not the

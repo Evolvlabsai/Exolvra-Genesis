@@ -22,7 +22,9 @@ choice and want to fire and forget.
 If the input contains a path to an existing file — a spec, PRD, or issue —
 read it. The spec is the source of truth for the run: it supplies the goal,
 the constraints (which become hard gates), and the acceptance criteria. It is
-read-only for the run; no builder may modify it to make the work pass.
+read-only for the run — record its sha256 when you read it, re-verify it
+before every round, and treat a mismatch as BLOCKED until the user confirms
+the change; no builder may modify it to make the work pass.
 
 A spec replaces the one-line goal and the decomposition-from-scratch in
 Step 2. It never replaces the bar. Requirement coverage becomes a hard gate:
@@ -48,7 +50,9 @@ Rules for a good bar:
   the specific slice we're matching, not the whole company.
 
 Capture the bar locally into `.gauntlet/bar/` (screenshots, files, numbers) so
-every critic can load it. The bar is immutable for the rest of the run.
+every critic can load it, and pin it: write `.gauntlet/bar/BAR.md` listing
+every artifact with its sha256. The bar is immutable for the rest of the run —
+re-verify those hashes before every judging round.
 
 Treat any user-supplied constraints as hard gates: checked before every bar
 comparison, and a gate failure is an automatic LOSS no matter how good the
@@ -89,8 +93,9 @@ On "go", for each piece:
    output that doesn't match the report, is an automatic LOSS — back to a
    builder.
 3. Send the real output and the bar — never the builder's code, reasoning, or
-   prior rounds — to a fresh `gauntlet-critic` subagent. Shuffle the A/B
-   labels whenever the medium allows.
+   prior rounds — to a fresh `gauntlet-critic` subagent, working from a
+   temporary directory containing copies, never inside the repo. Shuffle the
+   A/B labels whenever the medium allows.
 4. On LOSS, send the critic's single biggest gap back to a builder for another
    round, with a fresh critic every round.
 
@@ -102,14 +107,23 @@ Loop rules:
 - Every few rounds, run the whole assembled result through the gauntlet, not
   just the pieces, and re-check previously won pieces for regressions after
   integration.
+- After every round, re-verify the pins: the spec's sha256, every hash in
+  `.gauntlet/bar/BAR.md`, and that the repo is identical before and after
+  each critic session. Publish these attestations in the progress page's
+  `integrity` lines. A failed check is an automatic BLOCKED — stop and tell
+  the user.
 - If a piece is genuinely blocked on something only the user can resolve, mark
   it BLOCKED on the progress page and keep working the other pieces. Stop
   early only when everything is blocked.
 
-Progress page: maintain `.gauntlet/progress.html` — one self-contained,
-auto-refreshing HTML file with the round log, per-piece status, the latest
-side-by-side, and verdict history. Save a snapshot each round under
-`.gauntlet/runs/`.
+Progress page: at run start, copy the plugin's template from
+`${CLAUDE_PLUGIN_ROOT}/templates/progress.html` to `.gauntlet/progress.html`
+(if the template can't be found, generate a page with the same sections), and
+fill its JSON with the goal, bar, mode, and piece list as soon as Step 2
+completes. From then on, update it after every round by replacing only the
+JSON inside the `<script id="gauntlet-data">` block — never the markup,
+styles, or renderer — so the page looks identical for every run and every
+user of the plugin. Save a snapshot each round under `.gauntlet/runs/`.
 
 ## Win condition
 
