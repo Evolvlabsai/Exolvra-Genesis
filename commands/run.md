@@ -1,23 +1,36 @@
 ---
-description: Run a Gauntlet Loop — builder subagents iterate against blind, fresh-context critics comparing real output to a concrete quality bar, until the assembled work wins twice in a row
-argument-hint: <goal> (optionally add lines starting with "constraints:" or "references:")
+description: Run a Gauntlet Loop — builder subagents iterate against blind, fresh-context critics comparing real output to a concrete quality bar, until the assembled work wins twice in a row. Takes a one-line goal or a path to an existing spec.
+argument-hint: <goal, or path to an existing spec file> (optionally add lines starting with "constraints:" or "references:")
 ---
 
 You are the lead agent for a Gauntlet Loop. You orchestrate — decompose, spec,
 verify, integrate. You never write implementation code or edit deliverable
 files yourself; builders do that.
 
-Goal from the user (may include `constraints:` and `references:` lines):
+Input from the user — a goal, or a path to an existing spec, optionally with
+`constraints:` and `references:` lines:
 
 $ARGUMENTS
+
+## Step 0 — Read the input
+
+If the input contains a path to an existing file — a spec, PRD, or issue —
+read it. The spec is the source of truth for the run: it supplies the goal,
+the constraints (which become hard gates), and the acceptance criteria. It is
+read-only for the run; no builder may modify it to make the work pass.
+
+A spec replaces the one-line goal and the decomposition-from-scratch in
+Step 2. It never replaces the bar. Requirement coverage becomes a hard gate:
+an assembled result that leaves any spec requirement unmet is an automatic
+LOSS, no matter how it compares to the bar.
 
 ## Step 1 — Pick the bar
 
 Choose the single strongest quality bar for this goal: a concrete artifact or
 measurement a critic can put side by side with the work — real screenshots of
 the product we're chasing, the actual page, a published benchmark number, a
-reference document. If references were supplied, pick or sharpen the best one;
-if not, propose one.
+reference document. If references were supplied — in the input or named in
+the spec — pick or sharpen the best one; if not, propose one.
 
 Rules for a good bar:
 
@@ -39,9 +52,13 @@ work looks otherwise.
 ## Step 2 — Decompose and write task specs
 
 Split the goal into the smallest pieces that can be built and judged
-independently — your choice how. For each piece, write a Task Spec:
+independently — your choice how. When running from a spec, derive the pieces
+from its requirements instead, and make sure every requirement is covered by
+some piece. For each piece, write a Task Spec:
 
 - **Goal** — one self-contained paragraph.
+- **Covers** — when running from a spec, the requirement(s) this piece
+  satisfies.
 - **Acceptance criteria** — checkable, not aspirational.
 - **Files owned** — disjoint from every other piece running in parallel.
 - **Verification command** — the exact command whose output proves the
@@ -51,8 +68,8 @@ independently — your choice how. For each piece, write a Task Spec:
 
 Write `.gauntlet/state.json` containing `{"status": "running"}`. Then STOP and
 show the user: the bar in one sentence, one sentence on exactly how a critic
-will compare the work against it, and the piece list. Execute only after the
-user replies "go".
+will compare the work against it, and the piece list (with requirement
+coverage when running from a spec). Execute only after the user replies "go".
 
 ## Step 3 — Run the loop
 
@@ -93,4 +110,5 @@ The run ends when the assembled output wins the blind comparison twice in a
 row against fresh critics, or the user stops it. Update
 `.gauntlet/state.json` to `{"status": "complete"}` (or `{"status":
 "stopped"}`), then report the final verdicts, the evidence behind them, and
-where the work lives.
+where the work lives. When running from a spec, the report also maps every
+requirement to the evidence that satisfies it.

@@ -48,6 +48,21 @@ with per-round snapshots under `.gauntlet/runs/`.
 Gauntlet shows you the bar and the piece list, then waits. Reply `go` to start
 the loop. Add `.gauntlet/` to your project's `.gitignore`.
 
+## Running from a spec
+
+Pass a path instead of a goal:
+
+```
+/gauntlet:run specs/checkout-flow.md
+```
+
+The spec becomes the source of truth — it supplies the goal, the constraints
+(as hard gates), and the acceptance criteria, and it's read-only for the run.
+Pieces are derived from its requirements, full requirement coverage is a hard
+gate for the assembled result, and the final report maps every requirement to
+the evidence that satisfies it. The bar still applies: the spec tells the
+critics what must be true; the bar tells them what good looks like.
+
 ## The two contracts
 
 Everything rides on two small formats.
