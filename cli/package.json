@@ -1,0 +1,33 @@
+{
+  "name": "gauntlet",
+  "version": "0.1.0",
+  "description": "Run a Gauntlet Loop from the terminal: builders iterate against blind critics until the work beats a captured bar twice in a row.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "gauntlet": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && npm run build:plugin",
+    "build:plugin": "node -e \"import('./dist/plugin-dir.js').then(async (m) => { const { cpSync, existsSync, mkdirSync } = await import('node:fs'); const { dirname, join, resolve } = await import('node:path'); const from = resolve('..'); const to = resolve('dist', m.PACKAGED_PLUGIN_SUBDIR); for (const rel of Object.values(m.PLUGIN_FILES)) { const src = join(from, rel); if (!existsSync(src)) continue; const dst = join(to, rel); mkdirSync(dirname(dst), { recursive: true }); cpSync(src, dst); } const license = join(from, 'LICENSE'); if (existsSync(license)) cpSync(license, resolve('LICENSE')); })\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build",
+    "pretest": "npm run build",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.5",
+    "@clack/prompts": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
