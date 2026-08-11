@@ -94,7 +94,47 @@ looping forever. Prefer to approve the bar even when headless? Run without
 `auto`, capture the session id from `--output-format json`, review the
 printed bar, then continue with `claude -p --resume <session-id> "go"`. To
 embed the same loop inside your own tools, the Claude Agent SDK runs this
-exact harness as a TypeScript or Python library.
+exact harness as a TypeScript or Python library — the CLI below is that
+embedding, shipped.
+
+## The CLI
+
+`cli/` holds `gauntlet`, a thin TypeScript CLI on the Claude Agent SDK that
+runs the loop without opening Claude Code. It is transport and ergonomics
+only: the plugin markdown stays the single source of truth — the CLI loads
+`commands/run.md` and both agent files from the installed package at runtime
+(`GAUNTLET_PLUGIN_DIR` or `--plugin-dir` override the location), so CLI and
+plugin behavior cannot drift.
+
+Not yet on npm; build it from the repo:
+
+```
+cd cli && npm install && npm run build && npm link
+```
+
+Four commands:
+
+- `gauntlet run <goal-or-spec-path>` — the full loop. On a terminal with
+  nothing else to go on it asks for the goal, the models, and auto vs review;
+  answers persist as the next run's defaults (`--no-config` to ignore them).
+  `--auto` skips the bar-approval pause, `--max-rounds N` and `--max-cost USD`
+  stop a run cleanly and resumably, `--json` emits NDJSON ending in a
+  `{status, rounds, cost_usd, session_id}` summary for CI, and `--open` opens
+  the live progress page.
+- `gauntlet plan <goal-or-spec-path>` — Steps 0–2 only: prints the bar and
+  the task specs, then stops. A cheap preview of how a run would decompose.
+- `gauntlet runs` — recent runs: id, when, input, status, last verdict.
+- `gauntlet resume [id]` — continue a run in the session it started in; bare
+  `resume` offers a picker of unfinished runs.
+
+`--model` pins the lead by exact model id; `--builder-model` and
+`--critic-model` take a model *family* (`opus`, `sonnet`, `haiku`, or
+`inherit`) — the SDK pins subagents to a family, not a version, and the CLI
+says so rather than pretending otherwise. Exit codes are a contract:
+**0** the run met its win condition, **1** it lost, was blocked, or was
+stopped by a budget guard, **2** the invocation itself has to change.
+`gauntlet help exit-codes` and `gauntlet help environment` cover the rest —
+there is no flag table here because `--help` makes it unnecessary.
 
 ## The two contracts
 
@@ -134,9 +174,11 @@ default and nothing depends on it.
 
 ## What it is not
 
-- **Not a framework.** No config file, no CLI wrapper, no state database, no
-  required MCP servers. Two agents, two commands, one page template — small
-  enough to read in minutes.
+- **Not a framework.** The plugin is two agents, two commands, and one page
+  template — plain Markdown, no config file, no state database, no required
+  MCP servers, small enough to read in minutes. The CLI is an optional
+  companion, not a wrapper: it loads that same Markdown rather than
+  reimplementing the loop, and if the two could drift, the design is wrong.
 - **Not a CI system.** It runs inside a Claude Code session and ends when the
   work wins; your CI still owns the repo.
 - **Not a prompt library.** There is exactly one loop, and the bar — not the

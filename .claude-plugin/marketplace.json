@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Marketplace for the Gauntlet plugin — builders vs. blind critics against a concrete quality bar.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "gauntlet",
       "source": "./",
       "description": "Minimal Gauntlet Loop orchestrator — builder subagents iterate against blind, fresh-context critics until the work wins the comparison twice in a row.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "workflow",
       "tags": ["orchestration", "subagents", "verification"]
     }
