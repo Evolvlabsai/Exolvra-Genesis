@@ -19,7 +19,7 @@ import { PACKAGE_ROOT, REPO_ROOT, createSandbox } from './run-cli.js';
 import { frames, screen } from './tty.js';
 
 /*
- * `gauntlet interview`, driven end to end.
+ * `exolvra-genesis interview`, driven end to end.
  *
  * Two things are stood in for and nothing else is: the Claude Agent SDK, at the
  * seam `src/session.ts` already has for it, and the terminal — because an
@@ -36,11 +36,11 @@ const FAKE_SDK = `import { readFileSync, writeFileSync, existsSync } from 'node:
 let turn = 0;
 
 export function query({ prompt, options }) {
-  const plan = JSON.parse(readFileSync(process.env.GAUNTLET_INTERVIEW_SCRIPT, 'utf8'));
+  const plan = JSON.parse(readFileSync(process.env.EXOLVRA_GENESIS_INTERVIEW_SCRIPT, 'utf8'));
   const text = plan.turns[Math.min(turn, plan.turns.length - 1)];
   turn += 1;
 
-  const record = process.env.GAUNTLET_INTERVIEW_TURNS;
+  const record = process.env.EXOLVRA_GENESIS_INTERVIEW_TURNS;
   const seen = existsSync(record) ? JSON.parse(readFileSync(record, 'utf8')) : [];
   seen.push({
     prompt,
@@ -109,7 +109,7 @@ after(() => {
   }
 });
 
-function workspace(prefix = 'gauntlet-interview-') {
+function workspace(prefix = 'exolvra-genesis-interview-') {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   TEMP.push(dir);
   return dir;
@@ -134,9 +134,9 @@ function interview({ argv = [], turns, answers = [], cancel = false, cwd = works
     encoding: 'utf8',
     env: {
       ...process.env,
-      GAUNTLET_PLUGIN_DIR: REPO_ROOT,
-      GAUNTLET_INTERVIEW_SCRIPT: script,
-      GAUNTLET_INTERVIEW_TURNS: record,
+      EXOLVRA_GENESIS_PLUGIN_DIR: REPO_ROOT,
+      EXOLVRA_GENESIS_INTERVIEW_SCRIPT: script,
+      EXOLVRA_GENESIS_INTERVIEW_TURNS: record,
     },
   });
   assert.equal(proc.error, undefined, 'the driver failed to start');
@@ -168,7 +168,7 @@ const QUESTIONS = [
 const HANDOFF = [
   'Both files are approved.',
   '',
-  '@gauntlet handoff specs/release-notes.md | specs/release-notes.mockup.html',
+  '@exolvra-genesis handoff specs/release-notes.md | specs/release-notes.mockup.html',
 ].join('\n');
 
 test('R15: three questions, three answers, then the handoff', () => {
@@ -212,8 +212,8 @@ test('R15: three questions, three answers, then the handoff', () => {
   // The handoff prints the command to run, and the marker never reaches the
   // reader — it is addressed to this CLI.
   const text = drawn.join('\n');
-  assert.ok(text.includes('gauntlet run specs/release-notes.md'), text);
-  assert.equal(text.includes('@gauntlet'), false, 'the protocol reached the reader');
+  assert.ok(text.includes('exolvra-genesis run specs/release-notes.md'), text);
+  assert.equal(text.includes('@exolvra-genesis'), false, 'the protocol reached the reader');
   assert.match(result.frames().at(-1), /^└ {2}Spec ready — specs\/release-notes\.md$/);
 });
 
@@ -240,7 +240,7 @@ test('R15: the argument reaches the markdown, whatever kind it is', () => {
   const fresh = interview({ argv: [], turns: [HANDOFF] });
   assert.equal(fresh.code, 0, JSON.stringify(fresh.failure));
   assert.ok(
-    fresh.turns()[0].prompt.includes('You are running a Gauntlet interview'),
+    fresh.turns()[0].prompt.includes('You are running an Exolvra Genesis interview'),
     'the interview markdown was not what was sent',
   );
 });
@@ -257,7 +257,7 @@ test('R15: Ctrl+C at a question ends it, and settles nothing', () => {
 
   // An interview is not a run: there is no ledger and no state file to settle.
   assert.equal(
-    readdirSync(result.cwd).includes('.gauntlet'),
+    readdirSync(result.cwd).includes('.exolvra-genesis'),
     false,
     'an interview wrote run state',
   );
@@ -267,7 +267,7 @@ test('R15: without a terminal on both ends it exits 2, and says why', () => {
   // A real process, with real pipes: the ordinary way this command is reached
   // by something that cannot answer it.
   const result = sandbox.run(['interview', 'an idea'], {
-    env: { GAUNTLET_PLUGIN_DIR: REPO_ROOT },
+    env: { EXOLVRA_GENESIS_PLUGIN_DIR: REPO_ROOT },
   });
   assert.equal(result.code, 2, result.stdout + result.stderr);
   assert.equal(result.stdout, '', 'a conversation with nobody in it still drew a frame');
@@ -277,7 +277,7 @@ test('R15: without a terminal on both ends it exits 2, and says why', () => {
 
 test('R15: there is no --json, because a question is not machine output', () => {
   const rejected = sandbox.run(['interview', '--json', 'an idea'], {
-    env: { GAUNTLET_PLUGIN_DIR: REPO_ROOT },
+    env: { EXOLVRA_GENESIS_PLUGIN_DIR: REPO_ROOT },
   });
   assert.equal(rejected.code, 2, rejected.stdout + rejected.stderr);
   assert.match(rejected.stderr, /unknown flag: --json/);
@@ -342,13 +342,13 @@ test('R15: a turn that was only a marker draws nothing at all', () => {
   // reporting that nothing happened.
   const withMarkerOnly = interview({
     argv: ['an idea'],
-    turns: ['@gauntlet handoff specs/a.md |'],
+    turns: ['@exolvra-genesis handoff specs/a.md |'],
   });
   assert.equal(withMarkerOnly.code, 0, JSON.stringify(withMarkerOnly.failure));
 
   const drawn = withMarkerOnly.screen();
   const opening = drawn.findIndex((row) => row.startsWith('┌'));
-  const runLine = drawn.findIndex((row) => row.includes('gauntlet run'));
+  const runLine = drawn.findIndex((row) => row.includes('exolvra-genesis run'));
   assert.ok(opening !== -1 && runLine > opening, drawn.join('\n'));
 
   // Between the frame opening and the command there is the rail and the
@@ -366,7 +366,7 @@ test('R15: the handoff line is runnable from where the reader is standing', asyn
   const here = process.cwd();
 
   // Written where the command was typed: the bare path is what to type.
-  assert.equal(runLine('specs/a.md', here, here), 'gauntlet run specs/a.md');
+  assert.equal(runLine('specs/a.md', here, here), 'exolvra-genesis run specs/a.md');
 
   // Written somewhere else: without -C the path names a file the reader's
   // shell cannot see, and `run` reads a path it cannot find as a goal — so the
@@ -374,14 +374,14 @@ test('R15: the handoff line is runnable from where the reader is standing', asyn
   const elsewhere = join(here, 'work');
   assert.equal(
     runLine('specs/a.md', elsewhere, here),
-    'gauntlet run -C ' + elsewhere + ' specs/a.md',
+    'exolvra-genesis run -C ' + elsewhere + ' specs/a.md',
   );
 
   // A directory with a space in it is quoted, because it is going to be typed.
   const spaced = join(here, 'my work');
   assert.equal(
     runLine('specs/a.md', spaced, here),
-    'gauntlet run -C ' + JSON.stringify(spaced) + ' specs/a.md',
+    'exolvra-genesis run -C ' + JSON.stringify(spaced) + ' specs/a.md',
   );
 });
 
@@ -401,14 +401,14 @@ test('R15: a run under -C prints a line that names the directory', () => {
   // down the middle of it, so copying it off two rows picks the rail up too and
   // the paste does not run — the terminal soft-wraps this instead, which costs
   // a ragged row and keeps the line one line to anything selecting it.
-  const command = 'gauntlet run -C ' + wroteIn + ' specs/release-notes.md';
-  const rows = drawn.filter((row) => row.includes('gauntlet run'));
+  const command = 'exolvra-genesis run -C ' + wroteIn + ' specs/release-notes.md';
+  const rows = drawn.filter((row) => row.includes('exolvra-genesis run'));
   assert.equal(rows.length, 1, 'the command was drawn over several rows:\n' + rows.join('\n'));
   assert.equal(rows[0].replace(/^│\s*/, ''), command, rows[0]);
   assert.ok(rows[0].length > 80, 'this case is only interesting when it does not fit');
 
   // Everything else still wraps: the command is the one exception.
-  for (const row of drawn.filter((row) => !row.includes('gauntlet run'))) {
+  for (const row of drawn.filter((row) => !row.includes('exolvra-genesis run'))) {
     assert.ok(row.length <= 80, 'a row ran past the terminal: ' + row);
   }
 });
@@ -434,18 +434,18 @@ test('R15: cancelling after a turn does not claim nothing was written', () => {
 });
 
 test('R15: the handoff line is read for the CLI and kept from the reader', () => {
-  assert.deepEqual(readHandoff('@gauntlet handoff specs/a.md | specs/a.mockup.html'), {
+  assert.deepEqual(readHandoff('@exolvra-genesis handoff specs/a.md | specs/a.mockup.html'), {
     handoff: { spec: 'specs/a.md', mockup: 'specs/a.mockup.html' },
     rest: '',
   });
   // No mockup is a field left empty, not a missing field.
-  assert.deepEqual(readHandoff('@gauntlet handoff specs/a.md |'), {
+  assert.deepEqual(readHandoff('@exolvra-genesis handoff specs/a.md |'), {
     handoff: { spec: 'specs/a.md', mockup: '' },
     rest: '',
   });
   // A line with no spec is not a handoff, and stays where the reader can see it.
-  assert.deepEqual(readHandoff('@gauntlet handoff | x'), { rest: '@gauntlet handoff | x' });
-  assert.deepEqual(readHandoff('Prose.\n@gauntlet handoff specs/a.md |\nMore prose.'), {
+  assert.deepEqual(readHandoff('@exolvra-genesis handoff | x'), { rest: '@exolvra-genesis handoff | x' });
+  assert.deepEqual(readHandoff('Prose.\n@exolvra-genesis handoff specs/a.md |\nMore prose.'), {
     handoff: { spec: 'specs/a.md', mockup: '' },
     rest: 'Prose.\nMore prose.',
   });
@@ -457,11 +457,11 @@ test('R15: the handoff line is read for the CLI and kept from the reader', () =>
 
 test('R16: the plugin root resolves to the directory the plugin came from', () => {
   const substituted = substitutePluginRoot(
-    'cp ${CLAUDE_PLUGIN_ROOT}/templates/progress.html .gauntlet/',
-    'C:\\Users\\a b\\gauntlet',
+    'cp ${CLAUDE_PLUGIN_ROOT}/templates/progress.html .exolvra-genesis/',
+    'C:\\Users\\a b\\exolvra-genesis',
   );
   // Forward slashes, because what surrounds it is a path inside a command.
-  assert.equal(substituted, 'cp C:/Users/a b/gauntlet/templates/progress.html .gauntlet/');
+  assert.equal(substituted, 'cp C:/Users/a b/exolvra-genesis/templates/progress.html .exolvra-genesis/');
 
   // A directory containing what looks like a replacement pattern is a
   // directory, not a pattern.
@@ -470,7 +470,7 @@ test('R16: the plugin root resolves to the directory the plugin came from', () =
 });
 
 test('R16: a clean tarball install carries every file the CLI loads', () => {
-  const into = workspace('gauntlet-install-');
+  const into = workspace('exolvra-genesis-install-');
   // npm is a shell script on Windows, so it is run through one; every argument
   // is quoted because a temp directory may contain a space.
   const run = (args, cwd) => {
@@ -494,7 +494,7 @@ test('R16: a clean tarball install carries every file the CLI loads', () => {
   run(['init', '-y'], into);
   run(['install', '--no-audit', '--no-fund', join(into, packed)], into);
 
-  const installed = join(into, 'node_modules', 'gauntlet');
+  const installed = join(into, 'node_modules', 'exolvra-genesis');
   const shipped = join(installed, 'dist', 'plugin');
 
   // Every file the widened C3 list names, shipped and byte-identical.
@@ -561,7 +561,7 @@ test('evidence: an interview, drawn end to end', () => {
         'Approved. The mockup is at specs/release-notes.mockup.html — open it and',
         'refresh as we iterate.',
         '',
-        '@gauntlet handoff specs/release-notes.md | specs/release-notes.mockup.html',
+        '@exolvra-genesis handoff specs/release-notes.md | specs/release-notes.mockup.html',
       ].join('\n'),
     ],
     answers: [
@@ -574,15 +574,15 @@ test('evidence: an interview, drawn end to end', () => {
   assert.equal(result.code, 0, JSON.stringify(result.failure));
 
   const drawn = result.screen().join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
-  assert.match(drawn, /^┌ {2}gauntlet interview$/m);
-  assert.match(drawn, /gauntlet run specs\/release-notes\.md/);
+  assert.match(drawn, /^┌ {2}exolvra-genesis interview$/m);
+  assert.match(drawn, /exolvra-genesis run specs\/release-notes\.md/);
 
   const evidence = join(PACKAGE_ROOT, '.evidence');
   mkdirSync(evidence, { recursive: true });
   writeFileSync(
     join(evidence, 'interview-frame.txt'),
     [
-      'gauntlet interview on a terminal, captured from the shipped code.',
+      'exolvra-genesis interview on a terminal, captured from the shipped code.',
       '',
       'The frame, the questions and the typed answers are real: dist/ driving',
       '@clack/prompts 1.7.0, with two things stood in for and nothing else — the',
@@ -595,7 +595,7 @@ test('evidence: an interview, drawn end to end', () => {
       'is what the screen ends up showing. Written by test/interview.test.js.',
       '',
       '='.repeat(72),
-      '$ gauntlet interview "a CLI that turns a changelog into release notes"',
+      '$ exolvra-genesis interview "a CLI that turns a changelog into release notes"',
       '='.repeat(72),
       '',
       drawn,

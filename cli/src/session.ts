@@ -280,7 +280,7 @@ export function createSession(opts: SessionOptions): Session {
           '  ' + (error instanceof Error ? error.message : String(error)),
           '  the SDK spawns Claude Code with node and authenticates from this',
           '  environment: check that node is on PATH and that a credential is',
-          '  available (see `gauntlet help environment`)',
+          '  available (see `exolvra-genesis help environment`)',
         ].join('\n'),
       );
     } finally {

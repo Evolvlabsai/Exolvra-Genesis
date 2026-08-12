@@ -64,7 +64,7 @@ function absolute(value: string, cwd: string): string {
  * exists is read as a spec, and anything else is a one-line goal. Nothing here
  * guesses at intent from the shape of the text — `src/app.tsx` that does not
  * exist is a goal, exactly as it is when the plugin reads the same argument,
- * and exactly as `gauntlet plan --help` says it is. A rule that is written down
+ * and exactly as `exolvra-genesis plan --help` says it is. A rule that is written down
  * in two places has to be one rule.
  */
 export function resolveInput(
@@ -117,7 +117,7 @@ export function resolveInput(
  * as it was typed and the path it resolved to.
  *
  * `flag` is a label, not necessarily a flag: the same directory check validates
- * `--plugin-dir` and `GAUNTLET_PLUGIN_DIR`, and {@link usageFor} is what keeps a
+ * `--plugin-dir` and `EXOLVRA_GENESIS_PLUGIN_DIR`, and {@link usageFor} is what keeps a
  * usage line off the one of those that does not appear in a usage line.
  */
 export function requireDirectory(

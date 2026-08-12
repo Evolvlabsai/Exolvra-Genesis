@@ -37,13 +37,13 @@ import {
 import type { AgentModel, ModelChoice } from './models.js';
 
 /** The directory this CLI owns inside the OS user-config location. */
-export const CONFIG_DIR_NAME = 'gauntlet';
+export const CONFIG_DIR_NAME = 'exolvra-genesis';
 
 /** The file inside it. */
 export const CONFIG_FILE_NAME = 'config.json';
 
 /** What a saved config carries. Every field is optional; a missing one means "no preference". */
-export interface GauntletConfig {
+export interface ExolvraGenesisConfig {
   /** `lead` as a model id; `builder` and `critic` as families. */
   models?: ModelChoice;
   /** True when the loop starts without pausing for review (`--auto`). */
@@ -102,7 +102,7 @@ function stripBom(text: string): string {
 }
 
 function notice(message: string): string {
-  return 'gauntlet: ' + message;
+  return 'exolvra-genesis: ' + message;
 }
 
 /** The `code` of a filesystem error, or its message when it carries none. */
@@ -118,8 +118,8 @@ function isNotFound(error: unknown): boolean {
 
 /**
  * The directory the config lives in, per OS convention:
- * `%APPDATA%\gauntlet` on Windows, `~/Library/Application Support/gauntlet` on
- * macOS, `$XDG_CONFIG_HOME/gauntlet` (else `~/.config/gauntlet`) elsewhere.
+ * `%APPDATA%\exolvra-genesis` on Windows, `~/Library/Application Support/exolvra-genesis` on
+ * macOS, `$XDG_CONFIG_HOME/exolvra-genesis` (else `~/.config/exolvra-genesis`) elsewhere.
  */
 export function configDir(where: ConfigLocation = {}): string {
   const env = where.env ?? process.env;
@@ -152,7 +152,7 @@ export function configPath(where: ConfigLocation = {}): string {
  * only outward effect is a one-line notice when a file exists but cannot be
  * used, so a user whose preferences silently stopped applying can see why.
  */
-export function loadConfig(options: LoadOptions): GauntletConfig {
+export function loadConfig(options: LoadOptions): ExolvraGenesisConfig {
   const path = configPath(options);
   const warn = options.warn;
 
@@ -186,7 +186,7 @@ export function loadConfig(options: LoadOptions): GauntletConfig {
   }
 
   const record = parsed as Record<string, unknown>;
-  const config: GauntletConfig = {};
+  const config: ExolvraGenesisConfig = {};
 
   const models = readModels(record['models'], path, warn);
   if (models) config.models = models;
@@ -335,8 +335,8 @@ function acceptFamily(value: unknown, role: AgentRole): string {
 }
 
 /** The exact object written to disk — built field by field so key order is fixed. */
-function serialize(config: GauntletConfig): GauntletConfig {
-  const out: GauntletConfig = {};
+function serialize(config: ExolvraGenesisConfig): ExolvraGenesisConfig {
+  const out: ExolvraGenesisConfig = {};
   if (config.models) {
     out.models = {
       lead: acceptId(config.models.lead),
@@ -355,7 +355,7 @@ function serialize(config: GauntletConfig): GauntletConfig {
  * run, and a run interrupted mid-write must not leave behind a file that the
  * next run can only report as unreadable.
  */
-export function saveConfig(config: GauntletConfig, where: ConfigLocation = {}): string {
+export function saveConfig(config: ExolvraGenesisConfig, where: ConfigLocation = {}): string {
   // Validate before touching the filesystem, so a rejected config creates nothing.
   const body = JSON.stringify(serialize(config), null, 2) + '\n';
   const path = configPath(where);
@@ -379,6 +379,6 @@ export function saveConfig(config: GauntletConfig, where: ConfigLocation = {}): 
  * Takes the choices startup produced and keeps what the *next* run should
  * default to — which is everything except the goal.
  */
-export function configFromChoices(choices: { models: ModelChoice; auto: boolean }): GauntletConfig {
+export function configFromChoices(choices: { models: ModelChoice; auto: boolean }): ExolvraGenesisConfig {
   return { models: { ...choices.models }, auto: choices.auto };
 }

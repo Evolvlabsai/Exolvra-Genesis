@@ -39,7 +39,7 @@ function renderVersion(): string {
   return PROGRAM + ' version ' + v + '\n' + MANUAL_URL + '/releases/tag/v' + v + '\n';
 }
 
-/** `gauntlet help [<command> | <topic>]`. */
+/** `exolvra-genesis help [<command> | <topic>]`. */
 function runHelp(rest: readonly string[], ctx: Ctx): ExitCode {
   const name = rest[0];
   if (name === undefined) {
@@ -89,7 +89,7 @@ let pipeReported = false;
 /**
  * Ends the process on a closed pipe, having said so in one line.
  *
- * `gauntlet ... | head -1` closes the reader while there is still output to
+ * `exolvra-genesis ... | head -1` closes the reader while there is still output to
  * write, and that is a normal thing for a user to do. What it must not produce
  * is a Node stack trace about a stream the user never asked to know exists: one
  * line naming the stream and the reason, on stderr, and the exit that a run
@@ -231,7 +231,7 @@ const MIN_WIDTH = 40;
 /**
  * Whether to lay the output out for a terminal, and how wide.
  *
- * A pipe gets the machine-readable form. `GAUNTLET_FORCE_TTY` asks for the
+ * A pipe gets the machine-readable form. `EXOLVRA_GENESIS_FORCE_TTY` asks for the
  * terminal form anyway, optionally at a fixed width, so the aligned output can
  * be captured to a file exactly as a terminal would show it.
  */

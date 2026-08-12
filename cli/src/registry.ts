@@ -60,7 +60,7 @@ export interface ValueType<T> {
 }
 
 /** A value that is never valid anywhere, used as the rejection probe. */
-export const INVALID_VALUE_PROBE = 'gauntlet-invalid-value-probe';
+export const INVALID_VALUE_PROBE = 'exolvra-genesis-invalid-value-probe';
 
 function requirePositiveInt(raw: string, flag: string, usage: string): number {
   const parsed = Number(raw);
@@ -195,7 +195,7 @@ export interface Command {
   name: string;
   /** One line, shown in the root help command table. */
   summary: string;
-  /** Full usage line, e.g. `gauntlet plan <goal-or-spec-path> [flags]`. */
+  /** Full usage line, e.g. `exolvra-genesis plan <goal-or-spec-path> [flags]`. */
   usage: string;
   flags: FlagSpec[];
   /** The positional argument, validated at the same boundary as the flags. */

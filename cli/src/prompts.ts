@@ -785,19 +785,26 @@ export function createRunFrame(
         }
         case 'notice': {
           /*
-           * Wrapped, never cut.
+           * Wrapped, never cut — unless it is a command, which is never folded.
            *
-           * A notice is where the command to resume with is printed, and an id
-           * with its end taken off is not a shorter id — it is one that cannot
-           * be typed back in. So a notice too wide for the terminal is folded
-           * onto the next line at a space, with a token longer than the line
-           * left whole rather than split, and clack rails each line it is
-           * handed. The gap on a round line is the one field that is still cut
-           * to fit, because it is prose and the whole of it is a `--json` away.
+           * A notice too wide for the terminal is folded onto the next line at
+           * a space, with a token longer than the line left whole rather than
+           * split, because an id with its end taken off is not a shorter id but
+           * one that cannot be typed back in.
+           *
+           * A notice carrying a command is the exception, and `keepWhole` is
+           * how it says so. Folding one here folds it with the rail down the
+           * middle, so copying it off two rows picks the rail up too and the
+           * paste does not run; left long, the terminal soft-wraps it and it
+           * stays one line to anything selecting it. The gap on a round line is
+           * the one field still cut to fit, because it is prose and the whole
+           * of it is a `--json` away.
            */
-          const message = wrapText(plainText(event.message), budget(), 0, {
-            breakWords: false,
-          }).join('\n');
+          const text = plainText(event.message);
+          const message =
+            event.keepWhole === true
+              ? text
+              : wrapText(text, budget(), 0, { breakWords: false }).join('\n');
           // Before the plan is drawn, a note belongs in the box with the rest of
           // the preamble; after it, it is news and gets its own line.
           if (!planShown && event.level === 'note') {

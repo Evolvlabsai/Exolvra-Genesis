@@ -212,7 +212,7 @@ const resumeCommand: Command = {
     'Every run records the id of the Claude Agent SDK session it ran in, and resume\nhands that id back to the SDK. The agent picks the run up holding everything it\nalready worked out, rather than starting the whole thing again.',
     'With no run id, resume offers every run that has not finished — running, stopped,\nor blocked — that still has a session to go back to. That is a question, so it is\nonly asked when stdin is a terminal. Anywhere else — a pipe, a script, CI — resume\nnames the candidates and exits 2 rather than block on an answer that cannot come.',
     'A run that is already complete is not resumed by either route, and neither is one\nthat stopped before the agent produced anything, because it has no session to go\nback to. Both are exit 2, naming the run.',
-    'It exits 0 only when the run reports in .gauntlet/state.json that it is complete.\nA session that ends with the run still unfinished has not won anything, and exits 1,\nso resuming again is the next step rather than a surprise.',
+    'It exits 0 only when the run reports in .exolvra-genesis/state.json that it is complete.\nA session that ends with the run still unfinished has not won anything, and exits 1,\nso resuming again is the next step rather than a surprise.',
     'Everything a run reports, a resumed run reports the same way: one line per judged\nround, the rounds and the last verdict written back to the ledger as they land, and\n--json for the same NDJSON stream ending in the same four-field summary object.',
     '--max-rounds and --max-cost are the guards a run was stopped by, raised or taken\noff. They count this turn rather than the whole run: --max-rounds 5 allows five more\nrounds, and --max-cost is handed to the provider as this turn\'s ceiling and measured\nagainst what it reports the turn costing, which is added to the run total. Neither\nguard can turn a win into a loss: a turn that finishes the run exits 0 either way.',
   ],
@@ -794,7 +794,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
    * one that happens to live here.
    *
    * A session that returns normally has ended its *turn*; whether the *run* is
-   * finished is what `.gauntlet/state.json` says, and only that. Reading the
+   * finished is what `.exolvra-genesis/state.json` says, and only that. Reading the
    * turn's own status as the run's would record a resumed run that still has
    * work left as `complete` — and a complete run is one nothing will ever pick
    * up again, so the same command that printed "resume it with…" would refuse
@@ -840,6 +840,8 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
       type: 'notice',
       level: 'note',
       message: 'resume it with: ' + PROGRAM + ' resume ' + run.id,
+      // A command: never folded, so it copies clean.
+      keepWhole: true,
     });
   }
 

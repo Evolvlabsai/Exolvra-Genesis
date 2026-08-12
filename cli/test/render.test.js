@@ -22,7 +22,7 @@ import { PACKAGE_ROOT } from './run-cli.js';
 /*
  * The rendering layer, driven over answers captured from real agent runs.
  *
- * `test/fixtures/*.md` are verbatim transcripts of what `gauntlet plan` printed
+ * `test/fixtures/*.md` are verbatim transcripts of what `exolvra-genesis plan` printed
  * before there was a renderer: chat markdown piped straight to the terminal.
  * Nothing here is hand-written to be easy to render.
  */
@@ -263,7 +263,7 @@ test('a spec run names the spec the way the user typed it, under SPEC', () => {
 
 const SPEC = { id: 'P1', title: 't', covers: 'R1', files: 'f', verify: 'v' };
 
-function block(payload, tag = 'gauntlet-plan') {
+function block(payload, tag = 'exolvra-genesis-plan') {
   return ['```' + tag, JSON.stringify(payload), '```'].join('\n');
 }
 
@@ -320,19 +320,19 @@ test('an answer with no plan, or a broken one, says which', () => {
   };
   assert.equal(codeOf(''), 'no-answer');
   assert.equal(codeOf('just prose'), 'no-plan');
-  assert.equal(codeOf('```gauntlet-plan\nnot json\n```'), 'unreadable');
-  assert.equal(codeOf('```gauntlet-plan\n[1,2,3]\n```'), 'not-an-object');
-  assert.equal(codeOf('```gauntlet-plan\n{"bar":"b","specs":[]}\n```'), 'no-specs');
-  assert.equal(codeOf('```gauntlet-plan\n{"bar":"b","specs":"P1"}\n```'), 'wrong-type');
-  assert.equal(codeOf('```gauntlet-plan\n{"bar":"only the bar"}\n```'), 'no-specs');
-  assert.equal(codeOf('```gauntlet-plan\n{"specs":[{"id":"P1"}]}\n```'), 'missing-fields');
+  assert.equal(codeOf('```exolvra-genesis-plan\nnot json\n```'), 'unreadable');
+  assert.equal(codeOf('```exolvra-genesis-plan\n[1,2,3]\n```'), 'not-an-object');
+  assert.equal(codeOf('```exolvra-genesis-plan\n{"bar":"b","specs":[]}\n```'), 'no-specs');
+  assert.equal(codeOf('```exolvra-genesis-plan\n{"bar":"b","specs":"P1"}\n```'), 'wrong-type');
+  assert.equal(codeOf('```exolvra-genesis-plan\n{"bar":"only the bar"}\n```'), 'no-specs');
+  assert.equal(codeOf('```exolvra-genesis-plan\n{"specs":[{"id":"P1"}]}\n```'), 'missing-fields');
   for (const { name, text } of CAPTURED) {
     assert.equal(codeOf(text), 'no-plan', name + ' read as a plan');
   }
 });
 
 test('what a fault says is what was wrong, not a code handed to the user', () => {
-  const reading = readPlan('```gauntlet-plan\n{"bar":"b","specs":[{"id":"P1","title":"t"}]}\n```');
+  const reading = readPlan('```exolvra-genesis-plan\n{"bar":"b","specs":[{"id":"P1","title":"t"}]}\n```');
   assert.equal(reading.ok, false);
   assert.match(reading.fault.message, /^the preview produced no plan: /);
   assert.ok(
@@ -481,12 +481,12 @@ test('plainText flattens a field and changes nothing else about it', () => {
   // never stored — most often to the values they are about to copy.
   for (const value of [
     'C:\\dir\\.hidden\\file.txt',
-    'C:\\Users\\w30\\target\\.gauntlet\\progress.html',
+    'C:\\Users\\w30\\target\\.exolvra-genesis\\progress.html',
     '/home/a/*star*/notes.md',
     'a \\* literal star',
     'cli/src/**, cli/test/**',
     '**bold** and `code` and [gh](https://cli.github.com)',
-    'grep -q \'"status": *"running"\' .gauntlet/state.json',
+    'grep -q \'"status": *"running"\' .exolvra-genesis/state.json',
     'cd cli && npm test -- --grep "a\\.b"',
     '~~not~~ struck through',
     'a_b_c ***everything*** {braces} (parens) #hash +plus -dash !bang |pipe >gt',

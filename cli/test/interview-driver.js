@@ -1,5 +1,5 @@
 /**
- * Runs `gauntlet interview` with a terminal that is not one.
+ * Runs `exolvra-genesis interview` with a terminal that is not one.
  *
  * An interview is TTY-only and a spawned process is given pipes, so the command
  * is driven here, inside a process whose `node_modules` holds the scripted
@@ -52,7 +52,7 @@ const { interviewCommand } = await import(
 
 const errors = [];
 const ctx = {
-  program: 'gauntlet',
+  program: 'exolvra-genesis',
   cwd: plan.cwd,
   env: process.env,
   stdout: output,

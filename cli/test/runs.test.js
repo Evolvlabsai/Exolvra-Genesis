@@ -40,7 +40,7 @@ import { displayWidth } from '../dist/usage.js';
 import { BIN, PACKAGE_ROOT, REPO_ROOT, createSandbox, runProcess } from './run-cli.js';
 
 /*
- * The run ledger, `gauntlet runs`, and `gauntlet resume`.
+ * The run ledger, `exolvra-genesis runs`, and `exolvra-genesis resume`.
  *
  * The store is exercised directly, on real directories under the system's temp
  * directory; the two commands are exercised as real child processes running the
@@ -54,7 +54,7 @@ import { BIN, PACKAGE_ROOT, REPO_ROOT, createSandbox, runProcess } from './run-c
 const EVIDENCE = join(PACKAGE_ROOT, '.evidence');
 mkdirSync(EVIDENCE, { recursive: true });
 
-const WORK = mkdtempSync(join(tmpdir(), 'gauntlet-runs-'));
+const WORK = mkdtempSync(join(tmpdir(), 'exolvra-genesis-runs-'));
 const sandbox = createSandbox();
 after(() => {
   sandbox.cleanup();
@@ -95,7 +95,7 @@ function record(overrides = {}) {
 
 /** Writes the ledger with no help from the store, the way another tool would. */
 function seed(dir, runs) {
-  mkdirSync(join(dir, '.gauntlet'), { recursive: true });
+  mkdirSync(join(dir, '.exolvra-genesis'), { recursive: true });
   writeFileSync(runsPath(dir), JSON.stringify(runs, null, 2) + '\n', 'utf8');
   return dir;
 }
@@ -207,7 +207,7 @@ test('writeState writes the shape the shipped Stop hook greps for', () => {
     readFileSync(join(REPO_ROOT, 'hooks', 'verification-gate.example.json'), 'utf8'),
   );
   const command = hook.hooks.Stop[0].hooks[0].command;
-  const quoted = command.match(/grep -q '([^']+)' \.gauntlet\/state\.json/);
+  const quoted = command.match(/grep -q '([^']+)' \.exolvra-genesis\/state\.json/);
   assert.ok(quoted !== null, 'the hook no longer greps state.json: ' + command);
   const pattern = new RegExp(quoted[1]);
 
@@ -231,7 +231,7 @@ test('a status file that is missing or unusable is an answer, not a crash', () =
   const dir = fresh();
   assert.deepEqual(readState(dir), { status: undefined, detail: 'it was never written' });
 
-  mkdirSync(join(dir, '.gauntlet'), { recursive: true });
+  mkdirSync(join(dir, '.exolvra-genesis'), { recursive: true });
   writeFileSync(statePath(dir), '{"status": ', 'utf8');
   assert.equal(readState(dir).status, undefined);
   assert.match(readState(dir).detail, /not readable JSON/);
@@ -336,7 +336,7 @@ test('every write is a rename, so a reader never sees a half-written ledger', as
 
 /** Anything a finished writer should have cleaned up after itself. */
 function leftovers(dir) {
-  return readdirSync(join(dir, '.gauntlet')).filter(
+  return readdirSync(join(dir, '.exolvra-genesis')).filter(
     (name) => name.endsWith('.tmp') || name === basename(lockPath(dir)),
   );
 }
@@ -727,7 +727,7 @@ function ledger(now = Date.now()) {
 test('the table is the real renderer, and it is written to .evidence', () => {
   const dir = seed(fresh(), ledger());
   const { code, stdout, stderr } = runProcess(BIN, ['runs', '-C', dir], {
-    env: { GAUNTLET_FORCE_TTY: '100' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '100' },
   });
   assert.equal(code, 0, stderr);
   writeFileSync(join(EVIDENCE, 'runs-table.txt'), stdout, 'utf8');
@@ -791,7 +791,7 @@ test('--limit takes the most recent runs, and --json writes the records', () => 
   assert.deepEqual(records[2].models, MODELS, 'every field of the record is written');
 
   const terminal = runProcess(BIN, ['runs', '-C', dir, '--json'], {
-    env: { GAUNTLET_FORCE_TTY: '100' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '100' },
   });
   assert.deepEqual(JSON.parse(terminal.stdout).length, 6);
   assert.ok(terminal.stdout.includes('\n  {'), 'a terminal gets JSON laid out');
@@ -914,7 +914,7 @@ test('a run named with an escape sequence cannot repaint the table', () => {
     }),
   ]);
   const { code, stdout } = runProcess(BIN, ['runs', '-C', dir], {
-    env: { GAUNTLET_FORCE_TTY: '100' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '100' },
   });
   assert.equal(code, 0);
   assert.ok(!stdout.includes(ESC), 'an escape sequence reached the terminal');
@@ -931,7 +931,7 @@ test('a run named with a bidi override cannot turn the row around', () => {
     }),
   ]);
 
-  for (const env of [{ GAUNTLET_FORCE_TTY: '100' }, {}]) {
+  for (const env of [{ EXOLVRA_GENESIS_FORCE_TTY: '100' }, {}]) {
     const { code, stdout } = runProcess(BIN, ['runs', '-C', dir], { env });
     assert.equal(code, 0);
     assert.ok(!BIDI.test(stdout), 'a bidi control reached the terminal');
@@ -954,7 +954,7 @@ test('an unknown run id exits 2 and lists the ids that are recorded', () => {
   assert.equal(stdout, '');
   assert.match(stderr, /no run is recorded as "r-nope-123"/);
   for (const run of ledger()) assert.ok(stderr.includes(run.id), stderr);
-  assert.match(stderr, /Usage: {2}gauntlet resume \[<run-id>\] \[flags\]/);
+  assert.match(stderr, /Usage: {2}exolvra-genesis resume \[<run-id>\] \[flags\]/);
 });
 
 test('a run id that is not the shape of one is rejected before the ledger', () => {
@@ -967,7 +967,7 @@ test('a run id that is not the shape of one is rejected before the ledger', () =
 
 /**
  * A listing bigger than a pipe's buffer, read by something that stops after one
- * line — `gauntlet runs | head -1`.
+ * line — `exolvra-genesis runs | head -1`.
  *
  * The one-line exit for a closed pipe is the CLI entry point's, over the stream
  * every command writes through. What this asserts is what a user sees, so it
@@ -1065,7 +1065,7 @@ test('with no id and no terminal, resume names the candidates and exits 2', () =
   assert.ok(!stderr.includes('r-20260809-1130-77aa02'), 'a run with no session was offered');
 
   // And the line to type, which is the whole point of printing them.
-  assert.match(stderr, /gauntlet resume r-20260810-1719-ff0021/);
+  assert.match(stderr, /exolvra-genesis resume r-20260810-1719-ff0021/);
 });
 
 test('a directory with nothing to resume says that instead, and still exits 2', () => {
@@ -1230,7 +1230,7 @@ test('resume hands the recorded session id back to the SDK', () => {
   assert.equal(sent.cwd, dir);
   assert.equal(sent.maxTurns, 100);
   assert.equal(sent.permissionMode, 'acceptEdits');
-  assert.deepEqual(Object.keys(sent.agents).sort(), ['gauntlet-builder', 'gauntlet-critic']);
+  assert.deepEqual(Object.keys(sent.agents).sort(), ['exolvra-genesis-builder', 'exolvra-genesis-critic']);
 
   // Piped, a resumed run is the same stream a run writes: records, one per
   // line, and no block of the agent's own prose glued onto the end of them.
@@ -1247,11 +1247,11 @@ test('resume hands the recorded session id back to the SDK', () => {
   assert.equal(code, 1, stderr);
   assert.match(stdout, /still unfinished/);
   assert.ok(stdout.includes(statePath(dir)), stdout);
-  assert.ok(stdout.includes('resume it with: gauntlet resume ' + id), stdout);
+  assert.ok(stdout.includes('resume it with: exolvra-genesis resume ' + id), stdout);
 
   const after = readRuns(dir).find((run) => run.id === id);
   // The turn ended; the run did not. Recording it as complete would make the
-  // command it just printed — `gauntlet resume <id>` — refuse that exact run a
+  // command it just printed — `exolvra-genesis resume <id>` — refuse that exact run a
   // moment later, because nothing resumes a run the ledger calls finished.
   assert.equal(after.status, 'stopped', 'a run that did not finish was recorded as one that did');
   assert.equal(after.sessionId, 'sesn_fake', 'the session the SDK reported is recorded');

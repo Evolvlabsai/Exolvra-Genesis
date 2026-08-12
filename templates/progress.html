@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  GAUNTLET PROGRESS TEMPLATE
+  EXOLVRA_GENESIS PROGRESS TEMPLATE
   ==========================
-  LEAD AGENT: update ONLY the JSON inside <script id="gauntlet-data">.
+  LEAD AGENT: update ONLY the JSON inside <script id="exolvra-genesis-data">.
   Never edit the markup, styles, or renderer — that is what keeps this page
   identical for every user of the plugin. Escape any "</" inside JSON string
   values as "<\/". In gap/basis/note/desc strings, `backticks` render as
@@ -42,7 +42,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="20">
-<title>Gauntlet — live progress</title>
+<title>Exolvra Genesis — live progress</title>
 <style>
   :root {
     --bg: #fbfaf8; --panel: #fff; --ink: #1a1a19; --muted: #6b6a66;
@@ -108,7 +108,7 @@
 <body>
 <div class="wrap">
 
-<script id="gauntlet-data" type="application/json">
+<script id="exolvra-genesis-data" type="application/json">
 {
   "goal": "",
   "status": "starting",
@@ -121,7 +121,7 @@
 </script>
 
 <header>
-  <h1 id="title">Gauntlet</h1>
+  <h1 id="title">Exolvra Genesis</h1>
   <div class="sub"><span class="status" id="status"></span>&nbsp; <span id="subline"></span></div>
 </header>
 
@@ -150,10 +150,10 @@
 <script>
 (function () {
   var d;
-  try { d = JSON.parse(document.getElementById('gauntlet-data').textContent); }
+  try { d = JSON.parse(document.getElementById('exolvra-genesis-data').textContent); }
   catch (e) {
     document.body.insertAdjacentText('beforeend',
-      'Progress data is not valid JSON - the lead agent should fix the #gauntlet-data block.');
+      'Progress data is not valid JSON - the lead agent should fix the #exolvra-genesis-data block.');
     return;
   }
   var TICK = '\u0060';
@@ -182,7 +182,7 @@
 
   // Header
   var title = document.getElementById('title');
-  title.textContent = 'Gauntlet — ';
+  title.textContent = 'Exolvra Genesis — ';
   if (d.spec) { var c = el('code', 'path', d.spec); title.appendChild(c); }
   else title.appendChild(document.createTextNode(d.goal || 'no goal set yet'));
 
@@ -200,7 +200,7 @@
   // The bar
   var bar = document.getElementById('bar');
   if (!d.bar || !d.bar.length) {
-    bar.appendChild(el('div', 'empty', 'Not captured yet — artifacts land in .gauntlet/bar/ during Step 1.'));
+    bar.appendChild(el('div', 'empty', 'Not captured yet — artifacts land in .exolvra-genesis/bar/ during Step 1.'));
   } else d.bar.forEach(function (b) {
     var row = el('div', 'bar-item');
     row.appendChild(el('code', null, b.name || ''));
@@ -327,7 +327,7 @@
     foot.appendChild(s); foot.appendChild(document.createTextNode(' '));
   });
   foot.appendChild(document.createTextNode(
-    'Snapshots per round under .gauntlet/runs/. Refreshes every 20s.'));
+    'Snapshots per round under .exolvra-genesis/runs/. Refreshes every 20s.'));
 })();
 </script>
 </body>

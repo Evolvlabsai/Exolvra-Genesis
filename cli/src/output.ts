@@ -331,7 +331,7 @@ export interface ReporterOptions {
    *
    * Left off, it is read from the stream: a terminal gets aligned columns at
    * its own width, anything else gets records. It is passed in by a caller that
-   * knows better than the stream does — which is what `GAUNTLET_FORCE_TTY`
+   * knows better than the stream does — which is what `EXOLVRA_GENESIS_FORCE_TTY`
    * means everywhere else in this CLI, and how an aligned transcript is
    * captured to a file. Color is never part of it: that follows the stream, so
    * a captured transcript never carries an escape sequence.
@@ -388,7 +388,7 @@ export function createReporter(options: ReporterOptions): Reporter {
    * Anything else is laid out for {@link DEFAULT_WIDTH} columns, which is what
    * makes a captured transcript the same on every machine, and no width is ever
    * below {@link MIN_WIDTH} — the floor the rest of the CLI lays out to, and
-   * the one `gauntlet help environment` documents.
+   * the one `exolvra-genesis help environment` documents.
    */
   const viewport = (): Viewport => {
     const given = options.view;

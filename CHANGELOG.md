@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 — 2026-08-11
+
+### Changed
+
+- **Renamed the product to Exolvra Genesis.** This is a break, not an alias:
+  the previous names are gone rather than accepted alongside the new ones.
+  - Plugin, marketplace entry and slash commands: `/exolvra-genesis:run` and
+    `/exolvra-genesis:interview`. Install with
+    `/plugin install exolvra-genesis@exolvra-genesis`.
+  - CLI package and bin: `exolvra-genesis` (published as 0.3.0).
+  - Run state moved to `.exolvra-genesis/` — `runs.json`, `state.json`,
+    `bar/`, `runs/` and `progress.html`. The Stop hook greps the new path;
+    state written under the old directory is not read or migrated.
+  - Environment variables: `EXOLVRA_GENESIS_PLUGIN_DIR` and
+    `EXOLVRA_GENESIS_FORCE_TTY`.
+  - Subagents: `exolvra-genesis-builder` and `exolvra-genesis-critic`.
+  - User config moved to the `exolvra-genesis` directory in the OS config
+    location; answers saved under the old name are not read.
+  - `${CLAUDE_PLUGIN_ROOT}` is unchanged — it belongs to Claude Code, as does
+    everything else the host or the Claude Agent SDK defines.
+- Behaviour is unchanged. This release renames; it adds and removes nothing.
+
 ## 0.3.0 — 2026-08-11
 
 - `gauntlet interview` in the CLI (npm package now 0.2.0): runs

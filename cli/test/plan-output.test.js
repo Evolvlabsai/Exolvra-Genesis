@@ -8,13 +8,13 @@ import { MIN_WIDTH, displayWidth, graphemes } from '../dist/usage.js';
 import { PACKAGE_ROOT, REPO_ROOT, createSandbox, run } from './run-cli.js';
 
 /*
- * What `gauntlet plan` actually prints, off a real process.
+ * What `exolvra-genesis plan` actually prints, off a real process.
  *
  * The binary is the one the package ships, run as a child process from a temp
  * directory. The only substitution is the Claude Agent SDK, which the bar
  * allows: in its place the answer is replayed out of a file, so the CLI is
  * handed the same bytes a provider produced. Two of those files are verbatim
- * captures of real `gauntlet plan` runs from before there was a renderer.
+ * captures of real `exolvra-genesis plan` runs from before there was a renderer.
  *
  * The transcripts this writes to `.evidence/` are the process's own stdout.
  */
@@ -23,7 +23,7 @@ const FIXTURES = join(PACKAGE_ROOT, 'test', 'fixtures');
 const EVIDENCE = join(PACKAGE_ROOT, '.evidence');
 mkdirSync(EVIDENCE, { recursive: true });
 
-const WORK = mkdtempSync(join(tmpdir(), 'gauntlet-plan-out-'));
+const WORK = mkdtempSync(join(tmpdir(), 'exolvra-genesis-plan-out-'));
 const sandbox = createSandbox();
 after(() => {
   sandbox.cleanup();
@@ -37,27 +37,27 @@ writeFileSync(
   [
     "I've read the spec and captured the bar.",
     '',
-    '```gauntlet-plan',
+    '```exolvra-genesis-plan',
     JSON.stringify(
       {
         bar: 'gh 2.88.1 transcripts captured on this machine: root help, leaf help, list output, and the unknown-command error.',
         comparison:
           'Run the built binary as a process, capture its output, and put it beside the gh transcript that covers the same surface.',
         artifacts: [
-          { path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help: sectioning and alignment' },
+          { path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help: sectioning and alignment' },
           {
-            path: '.gauntlet/bar/gh/leaf-help-flags.txt',
+            path: '.exolvra-genesis/bar/gh/leaf-help-flags.txt',
             detail: 'gh run list --help: the flag table',
           },
           {
-            path: '.gauntlet/bar/gh/list-output.txt',
+            path: '.exolvra-genesis/bar/gh/list-output.txt',
             detail: 'gh run list: tabular output, machine-pipeable',
           },
         ],
         specs: [
           {
             id: 'P1',
-            title: 'Foundation, plugin loader, model overrides, and gauntlet plan',
+            title: 'Foundation, plugin loader, model overrides, and exolvra-genesis plan',
             covers: 'C1, C2, C3, R14',
             files: 'cli/package.json, cli/src/**, cli/test/**',
             verify: 'cd cli && npm run build && npm test',
@@ -126,7 +126,7 @@ test('a piped preview writes tab-delimited rows and nothing else', () => {
 });
 
 test('the same preview lays out aligned columns for a terminal', () => {
-  const { code, stdout } = planWith(PAYLOAD_ANSWER, { GAUNTLET_FORCE_TTY: '100' });
+  const { code, stdout } = planWith(PAYLOAD_ANSWER, { EXOLVRA_GENESIS_FORCE_TTY: '100' });
   assert.equal(code, 0);
   writeFileSync(join(EVIDENCE, 'plan-output-tty.txt'), stdout, 'utf8');
 
@@ -151,18 +151,18 @@ test('the width floor help environment documents is the one a process applies', 
   // every narrower width lays out identically to it, and the width just above
   // it does not, which is what makes this a measurement of the floor rather
   // than of two runs that happened to agree — and then holds the topic to it.
-  const at = planWith(PAYLOAD_ANSWER, { GAUNTLET_FORCE_TTY: String(MIN_WIDTH) }).stdout;
+  const at = planWith(PAYLOAD_ANSWER, { EXOLVRA_GENESIS_FORCE_TTY: String(MIN_WIDTH) }).stdout;
   assert.ok(at.length > 0, 'the preview at the floor printed nothing');
 
   for (const narrower of ['1', String(MIN_WIDTH - 1)]) {
     assert.equal(
-      planWith(PAYLOAD_ANSWER, { GAUNTLET_FORCE_TTY: narrower }).stdout,
+      planWith(PAYLOAD_ANSWER, { EXOLVRA_GENESIS_FORCE_TTY: narrower }).stdout,
       at,
       'a width of ' + narrower + ' was not laid out at ' + MIN_WIDTH,
     );
   }
   assert.notEqual(
-    planWith(PAYLOAD_ANSWER, { GAUNTLET_FORCE_TTY: String(MIN_WIDTH + 1) }).stdout,
+    planWith(PAYLOAD_ANSWER, { EXOLVRA_GENESIS_FORCE_TTY: String(MIN_WIDTH + 1) }).stdout,
     at,
     'the real floor is above ' + MIN_WIDTH + ', so the documented number is wrong',
   );
@@ -184,7 +184,7 @@ test('a piped record has the same fields whatever the answer contained', () => {
   writeFileSync(
     goalRun,
     [
-      '```gauntlet-plan',
+      '```exolvra-genesis-plan',
       JSON.stringify({
         bar: 'the bar',
         comparison: 'the comparison',
@@ -229,11 +229,11 @@ test('two different agent answers produce the same headings in the same order', 
     [
       'Summary for approval below.',
       '',
-      '```gauntlet-plan',
+      '```exolvra-genesis-plan',
       JSON.stringify({
         bar: 'Linear.app settings page, captured at 1440x900.',
         comparison: 'Blind A/B against the captured screenshots.',
-        artifacts: [{ path: '.gauntlet/bar/linear.png', detail: 'the captured page' }],
+        artifacts: [{ path: '.exolvra-genesis/bar/linear.png', detail: 'the captured page' }],
         specs: [{ id: '01', title: 'Design tokens', files: 'styles/tokens.css', verify: 'npm test' }],
       }),
       '```',
@@ -260,7 +260,7 @@ test('two different agent answers produce the same headings in the same order', 
 });
 
 test('an agent that answers in chat markdown is rendered, but is not a win', () => {
-  // The captured answers are what `gauntlet plan` used to print verbatim. They
+  // The captured answers are what `exolvra-genesis plan` used to print verbatim. They
   // are prose, so they are not plans: the words survive, the exit code does not.
   for (const name of ['agent-plan-chat-markdown.md', 'agent-plan-chat-markdown-2.md']) {
     const { code, stdout, stderr } = planWith(join(FIXTURES, name));
@@ -347,7 +347,7 @@ function answerFile(name, payload) {
     [
       'Here is the preview.',
       '',
-      '```gauntlet-plan',
+      '```exolvra-genesis-plan',
       JSON.stringify(payload, null, 2),
       '```',
     ].join('\n'),
@@ -421,9 +421,9 @@ function fieldStarts(line) {
 
 const HOSTILE_RUNS = [
   { label: 'piped, no terminal', env: {}, width: undefined, columns: 5 },
-  { label: 'terminal, 100 columns', env: { GAUNTLET_FORCE_TTY: '100' }, width: 100, columns: 5 },
-  { label: 'terminal, 80 columns', env: { GAUNTLET_FORCE_TTY: '80' }, width: 80, columns: 5 },
-  { label: 'terminal, 40 columns', env: { GAUNTLET_FORCE_TTY: '40' }, width: 40, columns: 5 },
+  { label: 'terminal, 100 columns', env: { EXOLVRA_GENESIS_FORCE_TTY: '100' }, width: 100, columns: 5 },
+  { label: 'terminal, 80 columns', env: { EXOLVRA_GENESIS_FORCE_TTY: '80' }, width: 80, columns: 5 },
+  { label: 'terminal, 40 columns', env: { EXOLVRA_GENESIS_FORCE_TTY: '40' }, width: 40, columns: 5 },
 ];
 
 test('hostile field values still produce one record per row, at every width', () => {
@@ -499,7 +499,7 @@ test('hostile field values still produce one record per row, at every width', ()
   check(
     {
       label: 'terminal, 80 columns, with a covers column',
-      env: { GAUNTLET_FORCE_TTY: '80' },
+      env: { EXOLVRA_GENESIS_FORCE_TTY: '80' },
       width: 80,
       columns: 5,
     },
@@ -508,7 +508,7 @@ test('hostile field values still produce one record per row, at every width', ()
 
   // The transcript written to .evidence is the process output, verbatim.
   const evidence = [
-    'gauntlet plan, fed field values a prompt cannot rule out.',
+    'exolvra-genesis plan, fed field values a prompt cannot rule out.',
     '',
     'Each block below is the stdout of one run of the built binary, byte for',
     'byte, produced by test/plan-output.test.js. The agent answer replayed into',
@@ -528,7 +528,7 @@ test('hostile field values still produce one record per row, at every width', ()
       .join('');
     evidence.push(
       '='.repeat(72),
-      '$ ' + setting + 'gauntlet plan "<goal>" | cat        # ' + label,
+      '$ ' + setting + 'exolvra-genesis plan "<goal>" | cat        # ' + label,
       '='.repeat(72),
       '',
       stdout,

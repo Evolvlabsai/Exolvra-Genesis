@@ -2,7 +2,7 @@
  * Process exit codes.
  *
  * Fixed by constraint C5 of `cli/cli-spec.md`. Every command resolves to one of
- * these three values; `gauntlet help exit-codes` is the user-facing statement of
+ * these three values; `exolvra-genesis help exit-codes` is the user-facing statement of
  * the same contract.
  */
 export const EXIT = { WIN: 0, LOSS: 1, USAGE: 2 } as const;
@@ -43,7 +43,7 @@ export class ConfigError extends Error {
  * belongs under a fault in the command line and nowhere else. A flag (`-C`,
  * `--plugin-dir`) and the positional argument (`<goal-or-spec-path>`) both
  * appear in it, so both get it; an environment variable does not appear in it
- * at all, so echoing it under a bad `GAUNTLET_PLUGIN_DIR` would point the
+ * at all, so echoing it under a bad `EXOLVRA_GENESIS_PLUGIN_DIR` would point the
  * reader at a line containing nothing they have to change.
  */
 export function usageFor(label: string, usage?: string): string | undefined {
@@ -73,7 +73,7 @@ export function errorKind(error: unknown): ErrorKind {
  * them. It is {@link EXIT.LOSS}, the code for a run that did not win — a run
  * this CLI could not carry through is blocked, which is exactly what that code
  * covers. It is never {@link EXIT.WIN}, and never {@link EXIT.USAGE}: nothing
- * the user could retype would avoid it. `gauntlet help exit-codes` says so, and
+ * the user could retype would avoid it. `exolvra-genesis help exit-codes` says so, and
  * every such exit prints what happened and where to report it, so a blocked run
  * is never mistaken on the terminal for a verdict that was actually reached.
  */

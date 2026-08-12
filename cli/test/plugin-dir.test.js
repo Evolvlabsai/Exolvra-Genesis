@@ -36,7 +36,7 @@ function caught(fn) {
 
 /** Writes a plugin directory holding `present` files only. */
 function makePluginDir(present = Object.values(PLUGIN_FILES)) {
-  const dir = mkdtempSync(join(tmpdir(), 'gauntlet-plugin-'));
+  const dir = mkdtempSync(join(tmpdir(), 'exolvra-genesis-plugin-'));
   for (const relative of present) {
     const file = join(dir, relative);
     mkdirSync(dirname(file), { recursive: true });
@@ -65,12 +65,12 @@ test('the shipped copy is really there, and is the repository files verbatim', (
   }
 });
 
-test('GAUNTLET_PLUGIN_DIR replaces the candidate list entirely', () => {
+test('EXOLVRA_GENESIS_PLUGIN_DIR replaces the candidate list entirely', () => {
   const dir = makePluginDir();
   assert.deepEqual(pluginDirCandidates({ [PLUGIN_DIR_ENV]: dir }), [resolve(dir)]);
 });
 
-test('an empty GAUNTLET_PLUGIN_DIR falls back to the default candidates', () => {
+test('an empty EXOLVRA_GENESIS_PLUGIN_DIR falls back to the default candidates', () => {
   assert.deepEqual(pluginDirCandidates({ [PLUGIN_DIR_ENV]: '   ' }), [
     resolve(PACKAGE_ROOT),
     resolve(REPO_ROOT),
@@ -91,8 +91,8 @@ test('the repo root resolves when running from source', () => {
   const sources = loadPluginSources({});
   assert.equal(sources.dir, resolve(REPO_ROOT));
   assert.match(sources.runMd, /Step 0/);
-  assert.match(sources.builderMd, /name: gauntlet-builder/);
-  assert.match(sources.criticMd, /name: gauntlet-critic/);
+  assert.match(sources.builderMd, /name: exolvra-genesis-builder/);
+  assert.match(sources.criticMd, /name: exolvra-genesis-critic/);
 });
 
 test('a missing file under the override is a ConfigError naming the path', () => {
@@ -102,7 +102,7 @@ test('a missing file under the override is a ConfigError naming the path', () =>
   );
   const error = caught(() => loadPluginSources({ [PLUGIN_DIR_ENV]: dir }));
   assert.ok(error instanceof ConfigError);
-  assert.match(error.message, /could not load the Gauntlet plugin markdown/);
+  assert.match(error.message, /could not load the Exolvra Genesis plugin markdown/);
   assert.ok(
     error.message.includes(resolve(dir)),
     'expected the message to name the directory it looked in',
@@ -124,7 +124,7 @@ test('an override that names a file says so, rather than blaming a missing file'
 });
 
 test('an override that does not exist says so', () => {
-  const dir = join(tmpdir(), 'gauntlet-absent-' + Date.now());
+  const dir = join(tmpdir(), 'exolvra-genesis-absent-' + Date.now());
   const error = caught(() => loadPluginSources({ [PLUGIN_DIR_ENV]: dir }));
   assert.match(error.message, /does not exist/);
 });
@@ -137,7 +137,7 @@ test('a directory with none of the files is a ConfigError', () => {
 });
 
 test('a directory that does not exist at all is a ConfigError', () => {
-  const dir = join(tmpdir(), 'gauntlet-does-not-exist-' + Date.now());
+  const dir = join(tmpdir(), 'exolvra-genesis-does-not-exist-' + Date.now());
   const error = caught(() => loadPluginSources({ [PLUGIN_DIR_ENV]: dir }));
   assert.ok(error instanceof ConfigError);
   assert.ok(error.message.includes(resolve(dir)));
@@ -191,7 +191,7 @@ test('a file that exists but cannot be read is a ConfigError, not a raw errno', 
 
   const error = caught(() => loadPluginSources({ [PLUGIN_DIR_ENV]: dir }));
   assert.ok(error instanceof ConfigError, 'an unreadable file must be a ConfigError');
-  assert.match(error.message, /could not read the Gauntlet plugin markdown/);
+  assert.match(error.message, /could not read the Exolvra Genesis plugin markdown/);
   assert.ok(
     error.message.includes(PLUGIN_FILES.runMd),
     'the error must name which file could not be read: ' + error.message,

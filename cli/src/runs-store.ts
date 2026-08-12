@@ -102,7 +102,7 @@ export function newRunId(at: Date = new Date()): string {
 /* -------------------------------------------------------------------------- */
 
 /** Where a run keeps what it records, under the directory it runs in. */
-export const RUN_DIR = '.gauntlet';
+export const RUN_DIR = '.exolvra-genesis';
 
 export function runsPath(cwd: string): string {
   return join(cwd, RUN_DIR, 'runs.json');
@@ -141,7 +141,7 @@ function unreadable(path: string, detail: string): ConfigError {
       'could not read the run ledger',
       '  ' + path,
       '  ' + detail,
-      '  it is one JSON array of run records, written by gauntlet itself; move it',
+      '  it is one JSON array of run records, written by exolvra-genesis itself; move it',
       '  aside to start a new ledger, or repair it in place',
     ].join('\n'),
   );
@@ -327,7 +327,7 @@ export function readRuns(cwd: string): RunRecord[] {
   return runs;
 }
 
-/** What `.gauntlet/state.json` says, and how to say it back to the user. */
+/** What `.exolvra-genesis/state.json` says, and how to say it back to the user. */
 export interface StateReading {
   status: RunStatus | undefined;
   /** One phrase naming what was found, for printing under the file's path. */
@@ -637,7 +637,7 @@ export function updateRun(
         [
           'no run is recorded as "' + id + '"',
           '  ' + runsPath(cwd),
-          '  run `gauntlet runs` to see the ids the ledger holds',
+          '  run `exolvra-genesis runs` to see the ids the ledger holds',
         ].join('\n'),
       );
     }
@@ -656,7 +656,7 @@ export function updateRun(
 }
 
 /**
- * Writes `.gauntlet/state.json`.
+ * Writes `.exolvra-genesis/state.json`.
  *
  * The one file outside this CLI's own output that something else reads: the
  * Stop hook the plugin ships greps it for a running status, so the shape it is

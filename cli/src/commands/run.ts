@@ -9,7 +9,7 @@ import {
   formatUsd,
 } from '../budget.js';
 import { configFromChoices, loadConfig, saveConfig } from '../config.js';
-import type { GauntletConfig } from '../config.js';
+import type { ExolvraGenesisConfig } from '../config.js';
 import type {
   BarArtifact,
   PlanPiece,
@@ -270,17 +270,17 @@ const runCommand: Command = {
   // What the command does, and not a word about how the loop decides anything:
   // when a run ends is settled in commands/run.md, and a summary that repeated
   // the rule would be a second copy of it to keep in step.
-  summary: 'Start a Gauntlet run and report each round as it is judged',
+  summary: 'Start an Exolvra Genesis run and report each round as it is judged',
   usage: PROGRAM + ' run [<goal-or-spec-path>] [flags]',
   group: 'core',
   description: [
-    'Start a Gauntlet run and report each round as it is judged.',
+    'Start an Exolvra Genesis run and report each round as it is judged.',
     'run loads the commands/run.md it finds on disk and hands it your goal, then reports\nwhat comes back: the bar once it is captured, the pieces once the goal is decomposed,\nand one line per judged round. The loop itself lives in that markdown and in the two\nagent files beside it, so what this CLI does and what the plugin does cannot drift.',
     'A path to an existing file is read as a spec and becomes the source of truth for the\nrun. Anything else is treated as a one-line goal, including a path that does not\nexist: nothing is inferred from the shape of the text.',
     'On a terminal, run asks for what it has not already been told, and for nothing else:\na goal given on the command line is not asked for again, nor is a model set by a flag\nor already saved in the config, and --auto declines the questionnaire outright. A run\nwith every answer in hand asks nothing at all. A flag beats a saved answer, and\nanything still unset is inherited from the session that spawns the agent. Piped,\nredirected, or run under --json it never asks, whatever is missing.',
     'Review is the default when it can be offered. The bar and the piece list print and the\nrun waits for you before a builder is spawned; --auto skips that pause, and so does any\nrun with nothing at the keyboard to answer it.',
-    '--max-rounds and --max-cost stop a run cleanly at the limit rather than at the end of\nit: the run is recorded as stopped, the line that stopped it says which guard did, and\n`gauntlet resume` picks it up from the session it was in. Ctrl+C does the same thing and\nprints the command to resume with; a second Ctrl+C exits at once.',
-    'It exits 0 only when the run reports in .gauntlet/state.json that it is complete. A run\nthat lost, was blocked, was stopped by a guard, or was interrupted exits 1, so resuming\nis the next step rather than a surprise.',
+    '--max-rounds and --max-cost stop a run cleanly at the limit rather than at the end of\nit: the run is recorded as stopped, the line that stopped it says which guard did, and\n`exolvra-genesis resume` picks it up from the session it was in. Ctrl+C does the same thing and\nprints the command to resume with; a second Ctrl+C exits at once.',
+    'It exits 0 only when the run reports in .exolvra-genesis/state.json that it is complete. A run\nthat lost, was blocked, was stopped by a guard, or was interrupted exits 1, so resuming\nis the next step rather than a surprise.',
   ],
   flags,
   argument: runArgument,
@@ -374,7 +374,7 @@ const withoutArgument: Command = { ...runCommand, argument: undefined };
  * The prefix that marks a line as being addressed to this CLI rather than to
  * the person reading along.
  */
-const MARKER = '@gauntlet';
+const MARKER = '@exolvra-genesis';
 
 /**
  * What the CLI asks to be told, and in what shape.
@@ -723,7 +723,7 @@ type Prompts = typeof import('../prompts.js');
 export function questionsFor(known: {
   given: string | undefined;
   flagged: Partial<ModelChoice>;
-  config: GauntletConfig;
+  config: ExolvraGenesisConfig;
   wantsAuto: boolean;
 }): StartupAsk {
   const { given, flagged, config, wantsAuto } = known;
@@ -783,7 +783,7 @@ async function settleStartup(
   prompts: Prompts,
   given: string | undefined,
   flagged: Partial<ModelChoice>,
-  config: GauntletConfig,
+  config: ExolvraGenesisConfig,
   wantsAuto: boolean,
   interactive: boolean,
   json: boolean,
@@ -851,7 +851,7 @@ export const STOPPED: Outcome = { reported: 'stopped', ledger: 'stopped', exit: 
  *
  * The distinction it exists to keep is between a *turn* that ended and a *run*
  * that finished. A session that returns normally has ended its turn and says
- * nothing about the work; only `.gauntlet/state.json` says whether the run is
+ * nothing about the work; only `.exolvra-genesis/state.json` says whether the run is
  * done. Reading the turn's own status as the run's is what makes a ledger say
  * `complete` about a run that lost — and a run recorded as complete is a run
  * that can never be resumed, so the loss is permanent.
@@ -1279,6 +1279,8 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
         type: 'notice',
         level: 'note',
         message: 'resume it with: ' + PROGRAM + ' resume ' + runId,
+        // A command: never folded, so it copies clean.
+        keepWhole: true,
       });
     }
 
@@ -1402,7 +1404,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
      * is what the Stop hook the plugin ships greps. A run that could not start
      * a session at all — no credential, no interpreter — would otherwise leave
      * `running` in both of them for good: the hook stays armed for a run that
-     * never began, `gauntlet runs` shows a row that is still going, and no
+     * never began, `exolvra-genesis runs` shows a row that is still going, and no
      * later run repairs either, because no later run knows about them.
      *
      * The status is `blocked`, which is what it is: a run stopped before any

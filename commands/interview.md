@@ -1,10 +1,10 @@
 ---
-description: Interview your way to a Gauntlet-ready spec and a single-file interactive mockup — or modify an existing pair. Ends with the exact /gauntlet:run line to fire.
+description: Interview your way to an Exolvra Genesis-ready spec and a single-file interactive mockup — or modify an existing pair. Ends with the exact /exolvra-genesis:run line to fire.
 argument-hint: [path to an existing spec to modify, or a one-line idea to start from]
 ---
 
-You are running a Gauntlet interview. The output is two files the user owns:
-a spec that `/gauntlet:run` can execute directly, and a single-file
+You are running an Exolvra Genesis interview. The output is two files the user owns:
+a spec that `/exolvra-genesis:run` can execute directly, and a single-file
 interactive mockup that doubles as a visual bar candidate for the run. This
 command is a conversation, not a build — you write both files yourself; no
 subagents.
@@ -40,7 +40,7 @@ ten questions.
 
 ## The spec
 
-Write `specs/<slug>.md` in exactly the format `/gauntlet:run` consumes:
+Write `specs/<slug>.md` in exactly the format `/exolvra-genesis:run` consumes:
 
 - A one-paragraph purpose.
 - `## Constraints (hard gates)` — C1, C2, … one line each, checkable.
@@ -69,7 +69,7 @@ the spec's References as the primary visual bar candidate.
 
 When both files are approved, print exactly what to run next:
 
-    /gauntlet:run specs/<slug>.md
+    /exolvra-genesis:run specs/<slug>.md
 
 and note that prefixing the arguments with `auto` makes it a fire-and-forget
 run. Do not start the run yourself.

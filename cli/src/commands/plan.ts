@@ -174,7 +174,7 @@ const pluginDirEnv: EnvSpec<string> = {
 };
 
 /** The fence tag the preview payload is carried in. */
-const PAYLOAD_TAG = 'gauntlet-plan';
+const PAYLOAD_TAG = 'exolvra-genesis-plan';
 
 /**
  * Scopes the loaded command markdown down to a preview, and says what shape
@@ -189,7 +189,7 @@ const PREVIEW_DIRECTIVE = [
   '---',
   '',
   'Preview mode. Execute only Steps 0, 1, and 2 above, then stop and end your',
-  'turn. Do not execute any later step, and do not write .gauntlet/state.json.',
+  'turn. Do not execute any later step, and do not write .exolvra-genesis/state.json.',
   '',
   'Output shape. Your answer is piped to a terminal, not to a chat window, and',
   'this CLI lays it out. End your turn with exactly one fenced block tagged',
@@ -226,10 +226,10 @@ const planCommand: Command = {
   description: [
     'Preview how a run would be decomposed, without building anything.',
     'plan executes Steps 0 through 2 of the commands/run.md it loads from disk and then\nstops, so it costs a fraction of a full run and edits none of your files.',
-    'It is not read-only, though: picking a bar means capturing it, so a preview writes\nunder .gauntlet/ in the directory it runs in, exactly where a full run would. If a\nbar from an earlier run is already there, plan stops instead of writing over it —\nrun elsewhere with --directory, or pass --force to capture over it.',
+    'It is not read-only, though: picking a bar means capturing it, so a preview writes\nunder .exolvra-genesis/ in the directory it runs in, exactly where a full run would. If a\nbar from an earlier run is already there, plan stops instead of writing over it —\nrun elsewhere with --directory, or pass --force to capture over it.',
     'A path to an existing file is read as a spec and becomes the source of truth for\nthe preview. Anything else is treated as a one-line goal, including a path that\ndoes not exist: nothing is inferred from the shape of the text.',
     '--model sets the lead agent, by model id. --builder-model and --critic-model\nset the family the subagents run on: the Claude Agent SDK pins a subagent to a\nmodel family rather than to a version, so those two take a family and refuse an\nid rather than reading it as the family it belongs to. A role left unset inherits\nthe model of the session that spawns it; both lists are under MODELS below.',
-    'The plugin markdown is read from disk at runtime and never restated by this CLI,\nso the two can never drift. See `gauntlet help environment` for how its location\nis resolved.',
+    'The plugin markdown is read from disk at runtime and never restated by this CLI,\nso the two can never drift. See `exolvra-genesis help environment` for how its location\nis resolved.',
   ],
   flags,
   argument: planArgument,
@@ -1097,7 +1097,7 @@ export function renderAnswer(
  * here only to be able to look before writing; what goes in it is the plugin
  * markdown's business, not this file's.
  */
-const RUN_DIR = '.gauntlet';
+const RUN_DIR = '.exolvra-genesis';
 const BAR_DIR = 'bar';
 
 /**

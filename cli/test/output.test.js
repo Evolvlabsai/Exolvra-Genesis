@@ -217,7 +217,7 @@ const REPORT_LINES = [
   '  # fail     0',
   '\t\ttwo tabs of indent, kept as two tabs',
   `${' '.repeat(40)}forty spaces of indent, kept as forty`,
-  '  $ GAUNTLET_PLUGIN_DIR=/opt/gauntlet gauntlet run specs/checkout-flow.md --json | jq -c .',
+  '  $ EXOLVRA_GENESIS_PLUGIN_DIR=/opt/exolvra-genesis exolvra-genesis run specs/checkout-flow.md --json | jq -c .',
 ];
 
 const BUILDER_REPORT = REPORT_LINES.join('\n');
@@ -235,15 +235,15 @@ const RUN_SCRIPT = [
   { type: 'run_started', goal: 'specs/checkout-flow.md', source: 'spec' },
   {
     type: 'bar_captured',
-    path: '.gauntlet/bar/',
+    path: '.exolvra-genesis/bar/',
     artifacts: [
-      { path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help: sectioning and alignment' },
+      { path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help: sectioning and alignment' },
       {
-        path: '.gauntlet/bar/gh/leaf-help-flags.txt',
+        path: '.exolvra-genesis/bar/gh/leaf-help-flags.txt',
         detail: 'gh run list --help: the flag table',
       },
-      { path: '.gauntlet/bar/gh/list-output.txt', detail: 'gh run list: tabular output' },
-      { path: '.gauntlet/bar/clack/frames-plain.txt', detail: '@clack/prompts 1.7.0 frames' },
+      { path: '.exolvra-genesis/bar/gh/list-output.txt', detail: 'gh run list: tabular output' },
+      { path: '.exolvra-genesis/bar/clack/frames-plain.txt', detail: '@clack/prompts 1.7.0 frames' },
     ],
   },
   {
@@ -264,7 +264,7 @@ const RUN_SCRIPT = [
   },
   {
     type: 'agent_output',
-    agent: 'gauntlet-builder',
+    agent: 'exolvra-genesis-builder',
     piece: 'P1',
     round: 2,
     text: BUILDER_REPORT,
@@ -343,12 +343,12 @@ const SAMPLES = {
   run_started: { type: 'run_started', goal: 'a settings page', source: 'goal' },
   bar_captured: {
     type: 'bar_captured',
-    path: '.gauntlet/bar/BAR.md',
-    artifacts: [{ path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help' }],
+    path: '.exolvra-genesis/bar/BAR.md',
+    artifacts: [{ path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help' }],
   },
   plan_ready: { type: 'plan_ready', pieces: [{ id: 'P1', title: 'Foundation' }] },
   round: { type: 'round', piece: 'P1', round: 1, verdict: 'WIN', elapsedMs: 9000 },
-  agent_output: { type: 'agent_output', agent: 'gauntlet-critic', text: 'VERDICT\nWIN' },
+  agent_output: { type: 'agent_output', agent: 'exolvra-genesis-critic', text: 'VERDICT\nWIN' },
   notice: { type: 'notice', level: 'note', message: 'resuming session 018f4c2b' },
   run_finished: {
     type: 'run_finished',
@@ -385,7 +385,7 @@ test('the human views hold a line back for nothing but agent output', () => {
     const loud = render([SAMPLES[type]], { verbose: true });
     if (type === 'agent_output') {
       assert.equal(quiet, '', 'agent output was printed without being asked for');
-      assert.ok(loud.includes('gauntlet-critic'), 'verbose did not print the agent output');
+      assert.ok(loud.includes('exolvra-genesis-critic'), 'verbose did not print the agent output');
       assert.ok(loud.includes('VERDICT'), 'verbose lost the text of the report');
     } else {
       assert.equal(quiet, loud, `${type} changed with --verbose`);
@@ -488,7 +488,7 @@ test('the run reads as a run: what it was, what it cost, where to resume', () =>
   const written = lines(renderTerminal(RUN_SCRIPT));
 
   assert.ok(written[0].startsWith('spec     specs/checkout-flow.md'), written[0]);
-  assert.ok(written.some((line) => line.startsWith('bar      .gauntlet/bar/ (4 artifacts)')));
+  assert.ok(written.some((line) => line.startsWith('bar      .exolvra-genesis/bar/ (4 artifacts)')));
   assert.ok(written.some((line) => line.startsWith('plan     3 pieces: P1, P2, P3')));
   assert.ok(written.some((line) => line.startsWith('warning  the spec file changed on disk')));
   assert.ok(written.some((line) => line === 'result   ✓ WIN      9 rounds  $4.8123'));
@@ -555,7 +555,7 @@ test('a pipe gets records: tab-delimited, five fields, nothing cut', () => {
 test('a pipe gets one record per event, glyph-free and never wrapped', () => {
   const longest =
     '/very/long/absolute/path/that/is/far/wider/than/eighty/columns/on/any/' +
-    'terminal/anybody/has/.gauntlet/progress.html';
+    'terminal/anybody/has/.exolvra-genesis/progress.html';
   const text = render([
     { type: 'run_started', goal: longest, source: 'spec' },
     { type: 'notice', level: 'note', message: longest },
@@ -638,9 +638,18 @@ test('verbose streams the agent report, it does not rewrite it', () => {
     ['terminal at 40', renderTerminal([event], 40, { verbose: true })],
   ]) {
     const written = lines(text);
-    assert.ok(written[0].startsWith('output   gauntlet-builder on P1 round 2'), written[0]);
+    // The heading says who wrote it and about what. It is the one part of the
+    // block that wraps, so at a narrow width it runs to more than one line —
+    // which is why it is read back whole rather than as its first line.
+    const heading = written.length - REPORT_LINES.length;
+    assert.ok(heading >= 1, `${what} lost the heading`);
+    assert.equal(
+      written.slice(0, heading).join(' ').replace(/\s+/g, ' '),
+      'output exolvra-genesis-builder on P1 round 2',
+      what,
+    );
     assert.deepEqual(
-      written.slice(1),
+      written.slice(heading),
       REPORT_LINES,
       `${what} did not reproduce the report line for line`,
     );
@@ -658,7 +667,7 @@ test('verbose streams the agent report, it does not rewrite it', () => {
   for (const line of piped) {
     const fields = line.split('\t');
     assert.equal(fields[0], 'output', 'a report line is not an output record: ' + line);
-    assert.equal(fields[1], 'gauntlet-builder/P1', 'a record does not say who wrote it');
+    assert.equal(fields[1], 'exolvra-genesis-builder/P1', 'a record does not say who wrote it');
   }
 });
 
@@ -671,7 +680,7 @@ test('nothing in a report is re-wrapped, re-indented, or squeezed', () => {
       [
         {
           type: 'agent_output',
-          agent: 'gauntlet-builder',
+          agent: 'exolvra-genesis-builder',
           text: [
             '  # pass  399',
             'a  b   c    d',
@@ -703,7 +712,7 @@ test('a report may not repaint the screen', () => {
       [
         {
           type: 'agent_output',
-          agent: 'gauntlet-builder',
+          agent: 'exolvra-genesis-builder',
           text: [
             'red ' + ESCAPE + '[31mand' + ESCAPE + '[0m back',
             'second line with two trailing spaces  ',
@@ -715,7 +724,7 @@ test('a report may not repaint the screen', () => {
   ).slice(1);
 
   assert.deepEqual(body, [
-    'output\tgauntlet-builder\tsecond line with two trailing spaces  ',
+    'output\texolvra-genesis-builder\tsecond line with two trailing spaces  ',
   ]);
   for (const line of body) assert.equal(hasControl(line, { allowTab: true }), false);
 });

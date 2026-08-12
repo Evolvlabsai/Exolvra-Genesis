@@ -31,7 +31,7 @@ import { PACKAGE_ROOT, planAnswer, runProcess } from './run-cli.js';
  * the way npm would install a dependency.
  */
 
-const WORK = mkdtempSync(join(tmpdir(), 'gauntlet-pack-'));
+const WORK = mkdtempSync(join(tmpdir(), 'exolvra-genesis-pack-'));
 after(() => rmSync(WORK, { recursive: true, force: true }));
 
 /** Runs npm, through the same executable that is running this suite. */
@@ -123,7 +123,7 @@ test('the published package carries the plugin markdown and loads it', () => {
   );
 
   const home = join(WORK, 'project');
-  const installed = join(home, 'node_modules', 'gauntlet');
+  const installed = join(home, 'node_modules', 'exolvra-genesis');
   const files = extract(tarball, installed);
 
   // 1. The three files are in the tarball at all.
@@ -147,7 +147,7 @@ test('the published package carries the plugin markdown and loads it', () => {
   //    root is not there to be found from inside node_modules.
   assert.deepEqual(
     readdirSync(join(home, 'node_modules')).sort(),
-    ['gauntlet'],
+    ['exolvra-genesis'],
     'the installed tree must hold nothing but the package under test',
   );
 
@@ -169,7 +169,7 @@ test('the published package carries the plugin markdown and loads it', () => {
     join(sdk, 'index.js'),
     "import { readFileSync } from 'node:fs';\n" +
       'export function query() {\n' +
-      '  const answer = readFileSync(process.env.GAUNTLET_TEST_SDK_RESULT_FILE, "utf8");\n' +
+      '  const answer = readFileSync(process.env.EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE, "utf8");\n' +
       '  return {\n' +
       '    async interrupt() {},\n' +
       '    async *[Symbol.asyncIterator]() {\n' +
@@ -191,8 +191,8 @@ test('the published package carries the plugin markdown and loads it', () => {
   const { code, stdout, stderr } = runProcess(bin, ['plan', 'a bash script'], {
     cwd: workdir,
     env: {
-      GAUNTLET_PLUGIN_DIR: undefined,
-      GAUNTLET_TEST_SDK_RESULT_FILE: answer,
+      EXOLVRA_GENESIS_PLUGIN_DIR: undefined,
+      EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE: answer,
     },
   });
 
@@ -207,12 +207,12 @@ test('the published package carries the plugin markdown and loads it', () => {
 });
 
 /**
- * An installed `node_modules/gauntlet` holding the built package, with
+ * An installed `node_modules/exolvra-genesis` holding the built package, with
  * `package.json` overridden by `manifest`.
  */
 function installWith(name, manifest) {
   const home = join(WORK, name);
-  const installed = join(home, 'node_modules', 'gauntlet');
+  const installed = join(home, 'node_modules', 'exolvra-genesis');
   mkdirSync(installed, { recursive: true });
   cpSync(join(PACKAGE_ROOT, 'dist'), join(installed, 'dist'), { recursive: true });
   writeFileSync(join(installed, 'package.json'), JSON.stringify(manifest, null, 2), 'utf8');
@@ -220,7 +220,7 @@ function installWith(name, manifest) {
   const probe = join(home, 'probe.mjs');
   writeFileSync(
     probe,
-    "try { await import('gauntlet'); } catch (error) {\n" +
+    "try { await import('exolvra-genesis'); } catch (error) {\n" +
       "  if (!String(error.code).startsWith('ERR_')) throw error;\n" +
       "  process.stdout.write('<import failed: ' + error.code + '>');\n" +
       '}\n',
@@ -232,7 +232,7 @@ function installWith(name, manifest) {
 test('importing the package does not run the CLI as a side effect', () => {
   const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'));
   assert.equal(pkg.main, undefined, 'main must not point at the executable');
-  assert.equal(pkg.bin.gauntlet, 'dist/cli.js', 'the bin is how the CLI is run');
+  assert.equal(pkg.bin['exolvra-genesis'], 'dist/cli.js', 'the bin is how the CLI is run');
 
   const quiet = installWith('import-project', pkg);
   assert.equal(quiet.status, 0, quiet.stderr);

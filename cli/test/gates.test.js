@@ -29,9 +29,9 @@ const SOURCE_FILES = walk(SRC, '.ts').map((path) => ({
 
 const collapse = (text) => text.replace(/\s+/g, ' ').trim();
 
-test('C1: the package declares Node >= 18, a gauntlet bin, and strict TypeScript', () => {
+test('C1: the package declares Node >= 18, an exolvra-genesis bin, and strict TypeScript', () => {
   assert.ok(PKG.engines.node.includes('18'), 'engines.node must pin >= 18');
-  assert.equal(PKG.bin.gauntlet, 'dist/cli.js');
+  assert.equal(PKG.bin['exolvra-genesis'], 'dist/cli.js');
   assert.match(TSCONFIG, /"strict":\s*true/);
   assert.ok(SOURCE_FILES.length > 0, 'expected TypeScript sources under src/');
 });
@@ -238,6 +238,6 @@ test('G6: cli-spec.md is untouched', async () => {
   const spec = readFileSync(join(PACKAGE_ROOT, 'cli-spec.md'));
   assert.equal(
     createHash('sha256').update(spec).digest('hex'),
-    '5cf4559861a5c7bd4b53795a2342eb849a35b0b9519253ab8c4cc3b1f4b138f8',
+    '595276af32362726f16f24a538eb53511ad4bfe04b77bab483deb637eca15bdc',
   );
 });

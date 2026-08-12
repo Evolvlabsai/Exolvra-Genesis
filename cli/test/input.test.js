@@ -14,7 +14,7 @@ import {
   resolveInput,
 } from '../dist/input.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'gauntlet-input-'));
+const dir = mkdtempSync(join(tmpdir(), 'exolvra-genesis-input-'));
 const specPath = join(dir, 'spec.md');
 const subdir = join(dir, 'specs');
 writeFileSync(specPath, '# Spec\n\nR1. Do the thing.\n', 'utf8');
@@ -63,7 +63,7 @@ test('a bare word is a goal even when a directory happens to share its name', ()
 /*
  * The documented rule, pinned.
  *
- * `gauntlet plan --help` says: a path to an existing file is read as a spec,
+ * `exolvra-genesis plan --help` says: a path to an existing file is read as a spec,
  * anything else is a one-line goal — and R1 says the CLI resolves the argument
  * exactly as the plugin does, whose Step 0 reads a path only when the file is
  * there. One rule, written in three places, so these tests exist to stop the
@@ -97,11 +97,11 @@ test('resolution is relative to the given cwd, not the process cwd', () => {
 
 test('an empty or blank argument is a UsageError quoting what was passed', () => {
   assert.throws(() => resolveInput('', dir), UsageError);
-  const error = caught(() => resolveInput('   ', dir, 'gauntlet plan <x>'));
+  const error = caught(() => resolveInput('   ', dir, 'exolvra-genesis plan <x>'));
   assert.ok(error instanceof UsageError);
   assert.ok(error.message.includes('"   "'), 'the message must quote the argument');
   assert.match(error.message, /a goal, or a path to an existing spec file, is required/);
-  assert.equal(error.usage, 'gauntlet plan <x>');
+  assert.equal(error.usage, 'exolvra-genesis plan <x>');
 });
 
 test('a leading ~ is expanded, so a quoted home path is not looked for under cwd', () => {
@@ -118,7 +118,7 @@ test('~ resolves to a spec when the home-relative file is really there', () => {
   // The home directory is faked by resolving against it explicitly: what is
   // checked is that the ~ is expanded at all, rather than looked for in a
   // directory literally named "~" under the current one.
-  const home = mkdtempSync(join(tmpdir(), 'gauntlet-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'exolvra-genesis-home-'));
   writeFileSync(join(home, 'notes.md'), '# Notes\n', 'utf8');
   assert.equal(expandHome('~/notes.md', home), join(home, 'notes.md'));
   assert.equal(resolveInput(expandHome('~/notes.md', home), dir).kind, 'spec');

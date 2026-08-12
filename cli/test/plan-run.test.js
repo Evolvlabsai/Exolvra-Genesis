@@ -13,7 +13,7 @@ import { after, test } from 'node:test';
 import { REPO_ROOT, answerFile, createSandbox, planAnswer } from './run-cli.js';
 
 /*
- * `gauntlet plan` as a process: what it is handed, what it writes where, and
+ * `exolvra-genesis plan` as a process: what it is handed, what it writes where, and
  * what it draws while it works.
  *
  * Every run below is the built binary, spawned. The Claude Agent SDK is the one
@@ -22,7 +22,7 @@ import { REPO_ROOT, answerFile, createSandbox, planAnswer } from './run-cli.js';
  * for anything the CLI does.
  */
 
-const WORK = mkdtempSync(join(tmpdir(), 'gauntlet-plan-run-'));
+const WORK = mkdtempSync(join(tmpdir(), 'exolvra-genesis-plan-run-'));
 const sandbox = createSandbox();
 after(() => {
   sandbox.cleanup();
@@ -95,7 +95,7 @@ test('a long path is echoed whole, never split across two lines', () => {
 
   const { code, stdout } = plan(['-C', cwd, typed], {
     cwd,
-    env: { GAUNTLET_FORCE_TTY: '40' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '40' },
   });
   assert.equal(code, 0);
   assert.ok(
@@ -139,7 +139,7 @@ test('a goal carrying $-patterns reaches the agent literally', () => {
 /** Writes a bar as an earlier run would have left it, and returns the dir. */
 function withCapturedBar(name) {
   const cwd = workdir(name);
-  const bar = join(cwd, '.gauntlet', 'bar');
+  const bar = join(cwd, '.exolvra-genesis', 'bar');
   mkdirSync(bar, { recursive: true });
   writeFileSync(join(bar, 'BAR.md'), '# The bar\n\nCaptured by the first run.\n', 'utf8');
   writeFileSync(join(bar, 'shot.png'), 'not really a png', 'utf8');
@@ -175,7 +175,7 @@ test('--force is the only way to capture over it, and it still runs', () => {
 
 test('an empty bar directory is not in the way', () => {
   const cwd = workdir('bar-empty');
-  mkdirSync(join(cwd, '.gauntlet', 'bar'), { recursive: true });
+  mkdirSync(join(cwd, '.exolvra-genesis', 'bar'), { recursive: true });
   const { code, stderr } = plan(['-C', cwd, 'a goal']);
   assert.equal(code, 0, 'nothing was captured there, so nothing can be lost: ' + stderr);
 });
@@ -184,8 +184,8 @@ test('plan --help says what it writes, and how to say yes to it', () => {
   const { code, stdout } = sandbox.run(['plan', '--help']);
   assert.equal(code, 0);
   assert.ok(
-    stdout.includes('.gauntlet/'),
-    'the help must say the preview writes under .gauntlet/:\n' + stdout,
+    stdout.includes('.exolvra-genesis/'),
+    'the help must say the preview writes under .exolvra-genesis/:\n' + stdout,
   );
   assert.ok(
     !/changes no deliverable files/.test(stdout),
@@ -214,7 +214,7 @@ test('a terminal gets a moving line on stderr, and stdout stays clean', () => {
   const cwd = workdir('progress-tty');
   const { code, stdout, stderr } = plan(['-C', cwd, 'a goal'], {
     cwd,
-    env: { GAUNTLET_FORCE_TTY: '100' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '100' },
   });
   assert.equal(code, 0, stderr);
 
@@ -239,7 +239,7 @@ test('a preview that produced no plan closes the line as unfinished', () => {
   const { code, stderr } = sandbox.run(['plan', '--plugin-dir', REPO_ROOT, '-C', cwd, 'a goal'], {
     replay: noPlan,
     cwd,
-    env: { GAUNTLET_FORCE_TTY: '100' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '100' },
   });
   assert.equal(code, 1);
   assert.match(stderr, /(^|\x1B\[2K)No plan\n/, stderr);

@@ -17,7 +17,7 @@ import {
   registerCommand,
 } from '../dist/registry.js';
 
-const DIR = mkdtempSync(join(tmpdir(), 'gauntlet-registry-'));
+const DIR = mkdtempSync(join(tmpdir(), 'exolvra-genesis-registry-'));
 const SUB = join(DIR, 'sub');
 mkdirSync(SUB);
 writeFileSync(join(DIR, 'spec.md'), '# Spec\n\nR1. Do the thing.\n', 'utf8');
@@ -37,7 +37,7 @@ const argument = { name: 'goal-or-spec-path', value: inputValue };
 const demo = {
   name: 'demo',
   summary: 'A demo command',
-  usage: 'gauntlet demo <goal-or-spec-path> [flags]',
+  usage: 'exolvra-genesis demo <goal-or-spec-path> [flags]',
   flags: [modelFlag, dirFlag, turnsFlag, modeFlag, verboseFlag],
   argument,
   cwdFlag: dirFlag,
@@ -47,7 +47,7 @@ const demo = {
 };
 
 const ctx = {
-  program: 'gauntlet',
+  program: 'exolvra-genesis',
   cwd: DIR,
   env: {},
   stdout: process.stdout,
@@ -176,7 +176,7 @@ test('wrong arity is a UsageError', () => {
 });
 
 test('a command with no declared argument rejects positionals', () => {
-  const bare = { ...demo, usage: 'gauntlet demo [flags]', argument: undefined };
+  const bare = { ...demo, usage: 'exolvra-genesis demo [flags]', argument: undefined };
   assert.throws(() => parseInvocation(bare, ['stray'], ctx), {
     message: 'accepts no arguments, received 1',
   });

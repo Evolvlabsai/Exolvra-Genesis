@@ -19,7 +19,7 @@ export type Verdict = 'WIN' | 'LOSS' | 'BLOCKED';
 /**
  * How a run ended.
  *
- * The same four outcomes `gauntlet help exit-codes` names: won, lost, blocked
+ * The same four outcomes `exolvra-genesis help exit-codes` names: won, lost, blocked
  * before a verdict was reached, or stopped by a budget guard.
  */
 export type RunStatus = 'win' | 'loss' | 'blocked' | 'stopped';
@@ -113,6 +113,18 @@ export interface NoticeEvent {
   type: 'notice';
   level: NoticeLevel;
   message: string;
+  /**
+   * True when this notice is a command, and so must not be folded.
+   *
+   * A line folded inside the interactive frame is folded with the rail drawn
+   * down the middle of it, so a command copied off two rows arrives with a `│`
+   * in it and does not run. Left whole, the terminal soft-wraps it, which costs
+   * a ragged row and keeps the line one line to anything selecting it.
+   *
+   * It is a hint to the framed view and to nothing else: the piped and `--json`
+   * views carry every message whole already, so neither reads this.
+   */
+  keepWhole?: boolean;
 }
 
 /**

@@ -124,7 +124,7 @@ async function press(io, key) {
 }
 
 /** A throwaway user-config location, on every platform's rules at once. */
-function tempHome(t, prefix = 'gauntlet-config-') {
+function tempHome(t, prefix = 'exolvra-genesis-config-') {
   const home = mkdtempSync(join(tmpdir(), prefix));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   return {
@@ -251,28 +251,28 @@ test('Ctrl+C at a prompt closes the frame and leaves no config behind', async (t
 test('the config lives where each OS keeps user config', () => {
   assert.equal(
     configPath({ platform: 'win32', env: { APPDATA: 'C:\\Users\\ada\\AppData\\Roaming' } }),
-    join('C:\\Users\\ada\\AppData\\Roaming', 'gauntlet', 'config.json'),
+    join('C:\\Users\\ada\\AppData\\Roaming', 'exolvra-genesis', 'config.json'),
   );
   assert.equal(
     configPath({ platform: 'darwin', env: { HOME: '/Users/ada' } }),
-    join('/Users/ada', 'Library', 'Application Support', 'gauntlet', 'config.json'),
+    join('/Users/ada', 'Library', 'Application Support', 'exolvra-genesis', 'config.json'),
   );
   assert.equal(
     configPath({ platform: 'linux', env: { HOME: '/home/ada' } }),
-    join('/home/ada', '.config', 'gauntlet', 'config.json'),
+    join('/home/ada', '.config', 'exolvra-genesis', 'config.json'),
   );
   assert.equal(
     configPath({ platform: 'linux', env: { HOME: '/home/ada', XDG_CONFIG_HOME: '/xdg' } }),
-    join('/xdg', 'gauntlet', 'config.json'),
+    join('/xdg', 'exolvra-genesis', 'config.json'),
   );
   // A relative XDG_CONFIG_HOME is not a location; the convention says ignore it.
   assert.equal(
     configPath({ platform: 'linux', env: { HOME: '/home/ada', XDG_CONFIG_HOME: 'relative' } }),
-    join('/home/ada', '.config', 'gauntlet', 'config.json'),
+    join('/home/ada', '.config', 'exolvra-genesis', 'config.json'),
   );
   assert.equal(
     configDir({ platform: 'linux', env: { HOME: '/home/ada' } }),
-    join('/home/ada', '.config', 'gauntlet'),
+    join('/home/ada', '.config', 'exolvra-genesis'),
   );
 });
 
@@ -330,7 +330,7 @@ test('a malformed config degrades to defaults with a notice', (t) => {
     const collected = collectWarnings();
     assert.deepEqual(loadConfig({ env, warn: collected.warn }), {}, 'for body ' + body);
     assert.equal(collected.messages.length, 1, 'expected one notice for ' + body);
-    assert.match(collected.messages[0], /^gauntlet: the config at /);
+    assert.match(collected.messages[0], /^exolvra-genesis: the config at /);
     assert.ok(collected.messages[0].includes(path));
     // Degraded, not repaired: the file the user can fix is still the file.
     assert.equal(readFileSync(path, 'utf8'), body);
@@ -512,8 +512,8 @@ test('every answer the pickers can give is one the run can act on', async (t) =>
     await driver;
 
     const definitions = buildAgentDefinitions(sources, choices.models);
-    assert.equal(definitions['gauntlet-builder'].model, AGENT_MODELS[row]);
-    assert.equal(definitions['gauntlet-critic'].model, AGENT_MODELS[row]);
+    assert.equal(definitions['exolvra-genesis-builder'].model, AGENT_MODELS[row]);
+    assert.equal(definitions['exolvra-genesis-critic'].model, AGENT_MODELS[row]);
 
     // And the same answers survive a trip through the config file, which is how
     // they reach the run after this one.
@@ -678,7 +678,7 @@ test('the startup flow renders, end to end, into a transcript', async (t) => {
 
   // The frame belongs to the run rather than to the questionnaire, so the run
   // is what opens it — including on the runs that go on to ask nothing.
-  beginRun('gauntlet run', streams);
+  beginRun('exolvra-genesis run', streams);
 
   const driver = (async () => {
     await waitFor(io, 'What are we building?');
@@ -755,7 +755,7 @@ test('the startup flow renders, end to end, into a transcript', async (t) => {
   // The transcript is worth nothing if it was drawn in the ASCII fallback set,
   // so the frames it must contain are named here rather than eyeballed later.
   const transcript = drawn.join('\n');
-  assert.equal(drawn[0], '┌  gauntlet run');
+  assert.equal(drawn[0], '┌  exolvra-genesis run');
   for (const glyph of ['◆', '◇', '│', '└', '●', '○', '▲', '╮', '╯', '├']) {
     assert.ok(transcript.includes(glyph), 'the transcript is missing ' + glyph);
   }

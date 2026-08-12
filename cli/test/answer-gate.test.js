@@ -30,7 +30,7 @@ import {
 const EVIDENCE = join(PACKAGE_ROOT, '.evidence');
 mkdirSync(EVIDENCE, { recursive: true });
 
-const WORK = mkdtempSync(join(tmpdir(), 'gauntlet-answer-'));
+const WORK = mkdtempSync(join(tmpdir(), 'exolvra-genesis-answer-'));
 const sandbox = createSandbox();
 after(() => {
   sandbox.cleanup();
@@ -38,9 +38,9 @@ after(() => {
 });
 
 const PLAN = {
-  bar: 'The gh 2.88.1 transcripts captured in .gauntlet/bar/gh.',
+  bar: 'The gh 2.88.1 transcripts captured in .exolvra-genesis/bar/gh.',
   comparison: 'Run the binary, capture its output, put it beside the transcript.',
-  artifacts: [{ path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help' }],
+  artifacts: [{ path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help' }],
   specs: [
     {
       id: 'P1',
@@ -77,7 +77,7 @@ function record(label, args, result) {
 /* Answers that are not plans                                                  */
 /* -------------------------------------------------------------------------- */
 
-const fence = (body, tag = 'gauntlet-plan') => '```' + tag + '\n' + body + '\n```';
+const fence = (body, tag = 'exolvra-genesis-plan') => '```' + tag + '\n' + body + '\n```';
 
 const UNUSABLE = [
   {
@@ -93,7 +93,7 @@ const UNUSABLE = [
   {
     label: 'prose with no block at all',
     answer: 'I read the spec and captured the bar. The decomposition follows next.',
-    names: ['carried no gauntlet-plan block', 'run it again'],
+    names: ['carried no exolvra-genesis-plan block', 'run it again'],
   },
   {
     label: 'the agent asking the user a question instead of planning',
@@ -105,7 +105,7 @@ const UNUSABLE = [
       '1. A path to a spec file describing what to build',
       '2. A concrete goal with a quality bar I can capture',
     ].join('\n'),
-    names: ['carried no gauntlet-plan block'],
+    names: ['carried no exolvra-genesis-plan block'],
   },
   {
     label: 'a block that is not JSON',
@@ -114,7 +114,7 @@ const UNUSABLE = [
   },
   {
     label: 'a block cut off in the middle of the plan',
-    answer: '```gauntlet-plan\n{ "bar": "the gh transcripts", "specs": [ { "id": "P1",',
+    answer: '```exolvra-genesis-plan\n{ "bar": "the gh transcripts", "specs": [ { "id": "P1",',
     names: ['cut off before it ended', '--max-turns'],
   },
   {
@@ -232,7 +232,7 @@ const RECOVERED = [
     answer: fence(PRETTY.replace('  "specs"', '  /* one entry per piece */\n  "specs"')),
   },
   {
-    label: 'a json fence instead of a gauntlet-plan fence',
+    label: 'a json fence instead of an exolvra-genesis-plan fence',
     answer: 'Here is the preview.\n\n' + fence(JSON.stringify(PLAN, null, 2), 'json'),
   },
   {
@@ -249,7 +249,7 @@ const RECOVERED = [
   },
   {
     label: 'a fence that was never closed',
-    answer: '```gauntlet-plan\n' + JSON.stringify(PLAN, null, 2),
+    answer: '```exolvra-genesis-plan\n' + JSON.stringify(PLAN, null, 2),
   },
   {
     label: 'a note written after the plan inside the block',
@@ -303,7 +303,7 @@ test('every repair the reader can make is named, not applied in silence', () => 
   const answers = {
     'the plan arrived in an untagged block': fence(JSON.stringify(PLAN), ''),
     'the plan arrived with no block around it': JSON.stringify(PLAN),
-    'the block was never closed': '```gauntlet-plan\n' + JSON.stringify(PLAN),
+    'the block was never closed': '```exolvra-genesis-plan\n' + JSON.stringify(PLAN),
     'trailing commas in the plan block were dropped': fence(
       JSON.stringify(PLAN).replace(/}]}$/, '},]}'),
     ),
@@ -380,7 +380,7 @@ test('a plan that arrives after the session broke is printed, and still exit 1',
 
 test('the answer-gate transcript is the process output, byte for byte', () => {
   const out = [
-    'gauntlet plan, fed answers a prompt cannot rule out.',
+    'exolvra-genesis plan, fed answers a prompt cannot rule out.',
     '',
     'Each block below is one run of the built binary as a child process, with',
     'the Claude Agent SDK replaced by a replay of the answer shown. EXIT, STDOUT',
@@ -398,7 +398,7 @@ test('the answer-gate transcript is the process output, byte for byte', () => {
       const { code, stdout, stderr } = planWith(answer);
       out.push(
         '='.repeat(72),
-        '$ gauntlet plan "' + GOAL + '"   # ' + label,
+        '$ exolvra-genesis plan "' + GOAL + '"   # ' + label,
         '='.repeat(72),
         '',
         '--- the answer the SDK was replaced with ---',

@@ -145,8 +145,8 @@ test('the agent definitions and cwd reach the transport', async () => {
   assert.equal(prompt, 'the lead prompt');
   assert.equal(options.cwd, process.cwd());
   assert.equal(options.model, 'claude-opus-5');
-  assert.equal(options.agents['gauntlet-builder'].model, 'sonnet');
-  assert.equal(options.agents['gauntlet-critic'].model, 'haiku');
+  assert.equal(options.agents['exolvra-genesis-builder'].model, 'sonnet');
+  assert.equal(options.agents['exolvra-genesis-critic'].model, 'haiku');
   assert.equal(options.resume, undefined);
 });
 
@@ -160,7 +160,7 @@ test('the lead takes a versioned id where a subagent cannot', async () => {
   });
   await exact.start();
   assert.equal(calls[0].options.model, 'claude-opus-4-8');
-  assert.equal(calls[0].options.agents['gauntlet-builder'].model, 'opus');
+  assert.equal(calls[0].options.agents['exolvra-genesis-builder'].model, 'opus');
 
   const { session: collapsed, calls: never } = session([result()], {
     models: { lead: 'inherit', builder: 'claude-opus-4-8', critic: 'inherit' },

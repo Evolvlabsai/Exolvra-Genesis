@@ -47,7 +47,7 @@ export const PLUGIN_FILES = {
  */
 export const PLUGIN_ROOT_PLACEHOLDER = '${CLAUDE_PLUGIN_ROOT}';
 
-export const PLUGIN_DIR_ENV = 'GAUNTLET_PLUGIN_DIR';
+export const PLUGIN_DIR_ENV = 'EXOLVRA_GENESIS_PLUGIN_DIR';
 
 /**
  * Where the published package carries its copy of the markdown, relative to the
@@ -58,7 +58,7 @@ export const PLUGIN_DIR_ENV = 'GAUNTLET_PLUGIN_DIR';
 export const PACKAGED_PLUGIN_SUBDIR = 'plugin';
 
 /**
- * Directories to try, in order: the `GAUNTLET_PLUGIN_DIR` override (and nothing
+ * Directories to try, in order: the `EXOLVRA_GENESIS_PLUGIN_DIR` override (and nothing
  * else, when it is set), then the installed package root, then the repository
  * root when running from source, then the copy the package ships.
  *
@@ -125,7 +125,7 @@ function readPluginFile(dir: string, relative: string): string {
     const reason = error instanceof Error ? error.message : String(error);
     throw new ConfigError(
       [
-        'could not read the Gauntlet plugin markdown',
+        'could not read the Exolvra Genesis plugin markdown',
         '',
         `${relative} is in ${dir} but could not be read:`,
         `  ${reason}`,
@@ -161,7 +161,7 @@ export function loadPluginSources(
   const wanted = Object.values(PLUGIN_FILES).join(', ');
   throw new ConfigError(
     [
-      'could not load the Gauntlet plugin markdown',
+      'could not load the Exolvra Genesis plugin markdown',
       '',
       `${wanted} were not all found in:`,
       ...misses,

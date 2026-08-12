@@ -30,7 +30,7 @@ await loadCommands();
 const COMMANDS = getCommands();
 
 /** An empty directory: nothing a relative probe names can accidentally exist. */
-const EMPTY = mkdtempSync(join(tmpdir(), 'gauntlet-gate-'));
+const EMPTY = mkdtempSync(join(tmpdir(), 'exolvra-genesis-gate-'));
 const RECORD = join(EMPTY, 'sdk-options.json');
 
 const sandbox = createSandbox();
@@ -46,7 +46,7 @@ function probeRun(args, env = {}, replay) {
     cwd: EMPTY,
     record: RECORD,
     replay,
-    env: { GAUNTLET_PLUGIN_DIR: undefined, ...env },
+    env: { EXOLVRA_GENESIS_PLUGIN_DIR: undefined, ...env },
   });
 }
 

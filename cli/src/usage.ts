@@ -1,7 +1,7 @@
 import type { Command, FlagSpec } from './registry.js';
 import { getCommands } from './registry.js';
 
-export const PROGRAM = 'gauntlet';
+export const PROGRAM = 'exolvra-genesis';
 
 export const TAGLINE =
   'Run adversarial build loops against a concrete quality bar.';
@@ -17,7 +17,7 @@ export const DEFAULT_WIDTH = 80;
  * Narrowest layout anything here is ever laid out for; a narrower terminal, or
  * a narrower width asked for by {@link FORCE_TTY_ENV}, is laid out at this.
  *
- * Named rather than left implicit because `gauntlet help environment` states
+ * Named rather than left implicit because `exolvra-genesis help environment` states
  * it: a floor the user is only told about by watching output stop getting
  * narrower is a floor they have to discover. The gate suite measures the floor
  * a real process applies and holds it to this number.
@@ -25,7 +25,7 @@ export const DEFAULT_WIDTH = 80;
 export const MIN_WIDTH = 40;
 
 /** Forces terminal-style rendering when stdout is not a terminal. */
-export const FORCE_TTY_ENV = 'GAUNTLET_FORCE_TTY';
+export const FORCE_TTY_ENV = 'EXOLVRA_GENESIS_FORCE_TTY';
 
 /**
  * The one flag every command inherits. `-h` is accepted everywhere `--help` is,
@@ -63,7 +63,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     body: [
       `The following environment variables can be used with ${PROGRAM}.`,
       '',
-      'GAUNTLET_PLUGIN_DIR: the directory holding the plugin markdown that is loaded at',
+      'EXOLVRA_GENESIS_PLUGIN_DIR: the directory holding the plugin markdown that is loaded at',
       'runtime — commands/run.md, agents/builder.md, and agents/critic.md. When it is',
       'unset, the installed package root is tried first, then the repository root when',
       `running ${PROGRAM} from source, then the copy the package ships inside dist/. When`,

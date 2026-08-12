@@ -224,15 +224,15 @@ test('buildAgentDefinitions applies the per-role family', () => {
     builder: 'sonnet',
     critic: 'haiku',
   });
-  assert.deepEqual(Object.keys(definitions).sort(), ['gauntlet-builder', 'gauntlet-critic']);
-  assert.equal(definitions['gauntlet-builder'].model, 'sonnet');
-  assert.equal(definitions['gauntlet-critic'].model, 'haiku');
+  assert.deepEqual(Object.keys(definitions).sort(), ['exolvra-genesis-builder', 'exolvra-genesis-critic']);
+  assert.equal(definitions['exolvra-genesis-builder'].model, 'sonnet');
+  assert.equal(definitions['exolvra-genesis-critic'].model, 'haiku');
 });
 
 test('buildAgentDefinitions defaults both roles to inherit', () => {
   const definitions = buildAgentDefinitions(REAL_SOURCES, DEFAULT_MODEL_CHOICE);
-  assert.equal(definitions['gauntlet-builder'].model, 'inherit');
-  assert.equal(definitions['gauntlet-critic'].model, 'inherit');
+  assert.equal(definitions['exolvra-genesis-builder'].model, 'inherit');
+  assert.equal(definitions['exolvra-genesis-critic'].model, 'inherit');
 });
 
 test('the lead model never leaks into the subagent definitions', () => {
@@ -241,18 +241,18 @@ test('the lead model never leaks into the subagent definitions', () => {
     builder: MODEL_INHERIT,
     critic: MODEL_INHERIT,
   });
-  assert.equal(definitions['gauntlet-builder'].model, 'inherit');
-  assert.equal(definitions['gauntlet-critic'].model, 'inherit');
+  assert.equal(definitions['exolvra-genesis-builder'].model, 'inherit');
+  assert.equal(definitions['exolvra-genesis-critic'].model, 'inherit');
 });
 
 test('agent prompts come from the markdown, not from the CLI', () => {
   const definitions = buildAgentDefinitions(REAL_SOURCES, DEFAULT_MODEL_CHOICE);
   const builderBody = splitFrontmatter(REAL_SOURCES.builderMd).body;
   const criticBody = splitFrontmatter(REAL_SOURCES.criticMd).body;
-  assert.equal(definitions['gauntlet-builder'].prompt, builderBody);
-  assert.equal(definitions['gauntlet-critic'].prompt, criticBody);
-  assert.ok(definitions['gauntlet-builder'].description.length > 0);
-  assert.ok(definitions['gauntlet-critic'].description.length > 0);
+  assert.equal(definitions['exolvra-genesis-builder'].prompt, builderBody);
+  assert.equal(definitions['exolvra-genesis-critic'].prompt, criticBody);
+  assert.ok(definitions['exolvra-genesis-builder'].description.length > 0);
+  assert.ok(definitions['exolvra-genesis-critic'].description.length > 0);
 });
 
 test('malformed plugin markdown is a ConfigError', () => {
@@ -307,7 +307,7 @@ test('no two subagent values ever produce the same SDK input', () => {
       ...DEFAULT_MODEL_CHOICE,
       builder: family,
     });
-    const sent = definitions['gauntlet-builder'].model;
+    const sent = definitions['exolvra-genesis-builder'].model;
     assert.equal(seen.has(sent), false, family + ' collapses onto ' + seen.get(sent));
     seen.set(sent, family);
   }

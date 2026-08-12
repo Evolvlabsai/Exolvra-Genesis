@@ -46,7 +46,7 @@ export function run(args, env = {}) {
 export const SAMPLE_PLAN = {
   bar: 'gh 2.88.1 transcripts captured on this machine.',
   comparison: 'Run the binary and put its output beside the gh transcript.',
-  artifacts: [{ path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help' }],
+  artifacts: [{ path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help' }],
   specs: [
     {
       id: 'P1',
@@ -60,7 +60,7 @@ export const SAMPLE_PLAN = {
 
 /** The same plan as an agent answer: prose, then the block it was asked for. */
 export function planAnswer(payload = SAMPLE_PLAN, prose = 'Here is the preview.') {
-  return [prose, '', '```gauntlet-plan', JSON.stringify(payload, null, 2), '```'].join('\n');
+  return [prose, '', '```exolvra-genesis-plan', JSON.stringify(payload, null, 2), '```'].join('\n');
 }
 
 /** Writes an answer for the fake SDK to replay, and returns its path. */
@@ -92,10 +92,10 @@ const FAKE_SDK = `import { readFileSync, writeFileSync } from 'node:fs';
 export function query({ prompt, options }) {
   // Replays an answer captured from a real agent run, so the CLI renders the
   // same bytes a provider actually produced.
-  const replay = process.env.GAUNTLET_TEST_SDK_RESULT_FILE;
+  const replay = process.env.EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE;
   const captured =
     replay === undefined || replay === '' ? undefined : readFileSync(replay, 'utf8');
-  const record = process.env.GAUNTLET_TEST_SDK_OPTIONS;
+  const record = process.env.EXOLVRA_GENESIS_TEST_SDK_OPTIONS;
   if (record !== undefined && record !== '') {
     writeFileSync(
       record,
@@ -108,7 +108,7 @@ export function query({ prompt, options }) {
           permissionMode: options.permissionMode ?? null,
           resume: options.resume ?? null,
           agents: options.agents,
-          pluginDir: options.env?.GAUNTLET_PLUGIN_DIR ?? null,
+          pluginDir: options.env?.EXOLVRA_GENESIS_PLUGIN_DIR ?? null,
         },
         null,
         2,
@@ -117,7 +117,7 @@ export function query({ prompt, options }) {
     );
   }
 
-  const subtype = process.env.GAUNTLET_TEST_SDK_SUBTYPE ?? 'success';
+  const subtype = process.env.EXOLVRA_GENESIS_TEST_SDK_SUBTYPE ?? 'success';
   if (subtype === 'throw') {
     throw new Error('Failed to spawn Claude Code process: spawn node ENOENT');
   }
@@ -212,7 +212,7 @@ export function query({ prompt, options }) {
  * real binary can be driven end to end without reaching a provider.
  */
 export function createSandbox() {
-  const root = mkdtempSync(join(tmpdir(), 'gauntlet-sandbox-'));
+  const root = mkdtempSync(join(tmpdir(), 'exolvra-genesis-sandbox-'));
   copyTree(join(PACKAGE_ROOT, 'dist'), join(root, 'dist'));
   writeFileSync(
     join(root, 'package.json'),
@@ -245,9 +245,9 @@ export function createSandbox() {
       return runProcess(join(root, 'dist', 'cli.js'), args, {
         cwd,
         env: {
-          GAUNTLET_TEST_SDK_SUBTYPE: subtype,
-          GAUNTLET_TEST_SDK_OPTIONS: record,
-          GAUNTLET_TEST_SDK_RESULT_FILE: replay,
+          EXOLVRA_GENESIS_TEST_SDK_SUBTYPE: subtype,
+          EXOLVRA_GENESIS_TEST_SDK_OPTIONS: record,
+          EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE: replay,
           ...env,
         },
       });

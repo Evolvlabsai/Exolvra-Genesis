@@ -203,7 +203,7 @@ export function renderRuns(
     verdictOf(record),
   ]);
   // The id keeps its width while any other column still has some to give: it is
-  // the one cell here that is meant to be typed back in, at `gauntlet resume`.
+  // the one cell here that is meant to be typed back in, at `exolvra-genesis resume`.
   return renderTable(COLUMNS, rows, view, 0, ['id']).join('\n') + '\n';
 }
 
@@ -258,7 +258,7 @@ const runsCommand: Command = {
   group: 'core',
   description: [
     'List the runs recorded in this directory.',
-    'Every run is recorded in .gauntlet/runs.json as it starts: the goal or spec it was\ngiven, the model each role ran on, when it started, and how it ended. This lists the\nmost recent of them, newest first.',
+    'Every run is recorded in .exolvra-genesis/runs.json as it starts: the goal or spec it was\ngiven, the model each role ran on, when it started, and how it ended. This lists the\nmost recent of them, newest first.',
     'On a terminal the table is laid out in aligned columns and the start time is shown\nas an age. Piped, it is one tab-delimited record per line with no header row, and\nthe start time is the timestamp exactly as it was recorded, so the output stays\nsomething cut and sort can read.',
     '--json writes the records themselves instead. Every field below is on every\nrecord, and a field a run has not produced yet is null rather than missing, so the\nshape of a record never depends on what is in it.',
     'A directory with no runs recorded in it prints nothing to stdout and says so on\nstderr, so a listing piped into something else is either a listing or is empty,\nand never a sentence about the absence of one. Listing no runs is still a\nsuccess: it exits 0.',
@@ -278,7 +278,7 @@ const runsCommand: Command = {
           'These are the ledger records themselves, named as the ledger names ' +
             'them, which is the convention gh follows for its own --json. The ' +
             'stream a run reports on is a different contract with a different ' +
-            'audience: gauntlet run --json and gauntlet resume --json end on a ' +
+            'audience: exolvra-genesis run --json and exolvra-genesis resume --json end on a ' +
             'summary object whose keys are fixed as cost_usd and session_id. ' +
             'Both spellings are anchored outside this CLI, so neither is bent ' +
             'to match the other.',

@@ -38,7 +38,7 @@ function columnOf(text, label, description) {
 test('--version prints the package version and exits 0', () => {
   const { code, stdout } = run(['--version']);
   assert.equal(code, 0);
-  assert.equal(stdout.split('\n')[0], 'gauntlet version ' + VERSION);
+  assert.equal(stdout.split('\n')[0], 'exolvra-genesis version ' + VERSION);
   assert.ok(stdout.includes(VERSION));
 });
 
@@ -50,11 +50,11 @@ test('--help prints root help with every section and exits 0', () => {
     assert.ok(stdout.includes('\n' + heading + '\n'), 'root help is missing ' + heading);
   }
   assert.match(stdout, /^Run adversarial build loops/);
-  assert.match(stdout, /\n {2}gauntlet <command> \[flags\]\n/);
+  assert.match(stdout, /\n {2}exolvra-genesis <command> \[flags\]\n/);
   assert.ok(stdout.endsWith('\n\n'), 'help output ends with a blank line');
 });
 
-test('bare gauntlet and gauntlet help both print root help', () => {
+test('bare exolvra-genesis and exolvra-genesis help both print root help', () => {
   const bare = run([]);
   const viaHelp = run(['help']);
   assert.equal(bare.code, 0);
@@ -225,8 +225,8 @@ test('a model value is accepted in any casing and forwarded in exactly one', () 
 test('a lead model given in another casing reaches the SDK canonicalized', () => {
   // Off a real process, through the real session module, into the options the
   // fake transport records: the one place the defect was observable.
-  const record = join(mkdtempSync(join(tmpdir(), 'gauntlet-canon-')), 'sdk-options.json');
-  const work = mkdtempSync(join(tmpdir(), 'gauntlet-canon-run-'));
+  const record = join(mkdtempSync(join(tmpdir(), 'exolvra-genesis-canon-')), 'sdk-options.json');
+  const work = mkdtempSync(join(tmpdir(), 'exolvra-genesis-canon-run-'));
   const answer = join(work, 'answer.md');
   writeFileSync(answer, planAnswer(), 'utf8');
 
@@ -259,7 +259,7 @@ test('refusing a model id on a subagent flag says why, off a real process', () =
   assert.match(stderr, /use "opus", the family claude-opus-5 belongs to/);
   assert.match(stderr, /accepted: inherit, opus, sonnet, haiku/);
   assert.ok(
-    stderr.includes('Usage:  gauntlet plan <goal-or-spec-path> [flags]'),
+    stderr.includes('Usage:  exolvra-genesis plan <goal-or-spec-path> [flags]'),
     'a usage error carries its usage line: ' + stderr,
   );
 });
@@ -316,9 +316,9 @@ test('an unknown command exits 2 with a gh-shaped error naming what exists', () 
   assert.equal(code, 2);
   assert.equal(stdout, '');
   const lines = stderr.split('\n');
-  assert.equal(lines[0], 'unknown command "bogus-command" for "gauntlet"');
+  assert.equal(lines[0], 'unknown command "bogus-command" for "exolvra-genesis"');
   assert.equal(lines[1], '');
-  assert.equal(lines[2], 'Usage:  gauntlet <command> [flags]');
+  assert.equal(lines[2], 'Usage:  exolvra-genesis <command> [flags]');
   assert.equal(lines[3], '');
   assert.equal(lines[4], 'Available commands:');
   assert.equal(lines[5], '  interview');
@@ -333,7 +333,7 @@ test('an error quotes what the user typed without letting it drive the terminal'
   const unknown = run([esc + '[31mbogus' + esc + '[0m']);
   assert.equal(unknown.code, 2);
   assert.ok(!control.test(unknown.stderr), 'an escape sequence reached the terminal');
-  assert.equal(unknown.stderr.split('\n')[0], 'unknown command "bogus" for "gauntlet"');
+  assert.equal(unknown.stderr.split('\n')[0], 'unknown command "bogus" for "exolvra-genesis"');
 
   const bad = run(['plan', '--model', esc + ']0;owned' + String.fromCharCode(7), 'a goal']);
   assert.equal(bad.code, 2);
@@ -355,7 +355,7 @@ test('malformed usage exits 2 and echoes the usage line it violated', () => {
     assert.equal(code, 2, args.join(' ') + ' should exit 2');
     assert.equal(stdout, '', args.join(' ') + ' should print nothing to stdout');
     assert.ok(
-      stderr.includes('Usage:  gauntlet plan <goal-or-spec-path> [flags]'),
+      stderr.includes('Usage:  exolvra-genesis plan <goal-or-spec-path> [flags]'),
       args.join(' ') + ' should echo the plan usage line',
     );
   }
@@ -369,22 +369,22 @@ test('a model id from another provider exits 2', () => {
 
 test('a plugin directory that does not exist exits 2, naming the variable', () => {
   const missing = join(PACKAGE_ROOT, 'no-such-plugin-dir');
-  const { code, stdout, stderr } = run(['plan', 'a goal'], { GAUNTLET_PLUGIN_DIR: missing });
+  const { code, stdout, stderr } = run(['plan', 'a goal'], { EXOLVRA_GENESIS_PLUGIN_DIR: missing });
   assert.equal(code, 2);
   assert.equal(stdout, '');
-  assert.match(stderr, /invalid value .* for GAUNTLET_PLUGIN_DIR: no such directory/);
+  assert.match(stderr, /invalid value .* for EXOLVRA_GENESIS_PLUGIN_DIR: no such directory/);
   assert.ok(stderr.includes(missing), 'the error must name the path it looked in');
 });
 
 test('a plugin directory without the markdown is a configuration error, exit 2', () => {
-  const empty = mkdtempSync(join(tmpdir(), 'gauntlet-empty-plugin-'));
-  const { code, stdout, stderr } = run(['plan', 'a goal'], { GAUNTLET_PLUGIN_DIR: empty });
+  const empty = mkdtempSync(join(tmpdir(), 'exolvra-genesis-empty-plugin-'));
+  const { code, stdout, stderr } = run(['plan', 'a goal'], { EXOLVRA_GENESIS_PLUGIN_DIR: empty });
   assert.equal(code, 2);
   assert.equal(stdout, '');
-  assert.match(stderr, /could not load the Gauntlet plugin markdown/);
+  assert.match(stderr, /could not load the Exolvra Genesis plugin markdown/);
   assert.ok(stderr.includes(empty), 'the error must name the path it looked in');
   assert.match(stderr, /missing commands\/run\.md/);
-  assert.match(stderr, /GAUNTLET_PLUGIN_DIR/);
+  assert.match(stderr, /EXOLVRA_GENESIS_PLUGIN_DIR/);
 });
 
 test('help topics are first-class and exit 0', () => {
@@ -396,10 +396,10 @@ test('help topics are first-class and exit 0', () => {
 
   const environment = run(['help', 'environment']);
   assert.equal(environment.code, 0);
-  assert.match(environment.stdout, /GAUNTLET_PLUGIN_DIR/);
+  assert.match(environment.stdout, /EXOLVRA_GENESIS_PLUGIN_DIR/);
 });
 
-test('gauntlet help <command> renders that command help', () => {
+test('exolvra-genesis help <command> renders that command help', () => {
   assert.equal(run(['help', 'plan']).stdout, run(['plan', '--help']).stdout);
 });
 

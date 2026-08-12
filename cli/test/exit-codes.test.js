@@ -32,7 +32,7 @@ import {
  * returned, at the bottom of the file.
  */
 
-const FIXTURES = mkdtempSync(join(tmpdir(), 'gauntlet-exit-'));
+const FIXTURES = mkdtempSync(join(tmpdir(), 'exolvra-genesis-exit-'));
 const A_FILE = join(FIXTURES, 'not-a-directory.txt');
 const EMPTY_DIR = join(FIXTURES, 'empty');
 const MISSING = join(FIXTURES, 'no-such-directory');
@@ -66,9 +66,9 @@ const CONFIGURATION_ERRORS = [
   {
     name: 'an unknown root flag',
     args: ['--bogus'],
-    names: ['unknown flag: --bogus', 'gauntlet <command> [flags]'],
+    names: ['unknown flag: --bogus', 'exolvra-genesis <command> [flags]'],
   },
-  { name: 'plan with no argument', args: ['plan'], names: ['gauntlet plan'] },
+  { name: 'plan with no argument', args: ['plan'], names: ['exolvra-genesis plan'] },
   {
     name: 'plan with two arguments',
     args: ['plan', 'one', 'two'],
@@ -162,22 +162,22 @@ const CONFIGURATION_ERRORS = [
     names: [EMPTY_DIR, 'missing commands/run.md'],
   },
   {
-    name: 'GAUNTLET_PLUGIN_DIR pointing at a directory that does not exist',
+    name: 'EXOLVRA_GENESIS_PLUGIN_DIR pointing at a directory that does not exist',
     args: ['plan', 'a goal'],
-    env: { GAUNTLET_PLUGIN_DIR: MISSING },
-    names: [MISSING, 'no such directory', 'GAUNTLET_PLUGIN_DIR'],
+    env: { EXOLVRA_GENESIS_PLUGIN_DIR: MISSING },
+    names: [MISSING, 'no such directory', 'EXOLVRA_GENESIS_PLUGIN_DIR'],
   },
   {
-    name: 'GAUNTLET_PLUGIN_DIR pointing at a file',
+    name: 'EXOLVRA_GENESIS_PLUGIN_DIR pointing at a file',
     args: ['plan', 'a goal'],
-    env: { GAUNTLET_PLUGIN_DIR: A_FILE },
-    names: [A_FILE, 'not a directory', 'GAUNTLET_PLUGIN_DIR'],
+    env: { EXOLVRA_GENESIS_PLUGIN_DIR: A_FILE },
+    names: [A_FILE, 'not a directory', 'EXOLVRA_GENESIS_PLUGIN_DIR'],
   },
   {
-    name: 'GAUNTLET_PLUGIN_DIR without the plugin markdown',
+    name: 'EXOLVRA_GENESIS_PLUGIN_DIR without the plugin markdown',
     args: ['plan', 'a goal'],
-    env: { GAUNTLET_PLUGIN_DIR: EMPTY_DIR },
-    names: [EMPTY_DIR, 'missing commands/run.md', 'GAUNTLET_PLUGIN_DIR'],
+    env: { EXOLVRA_GENESIS_PLUGIN_DIR: EMPTY_DIR },
+    names: [EMPTY_DIR, 'missing commands/run.md', 'EXOLVRA_GENESIS_PLUGIN_DIR'],
   },
   {
     name: 'an argument with nothing in it',
@@ -209,9 +209,9 @@ test('C5: a usage line goes under a bad flag, and never under a bad variable', (
   // A usage line is an instruction — this is how the command line is spelled.
   // A flag and the positional argument are both in it, so a fault in either
   // ends with it. An environment variable is not in it anywhere, so printing it
-  // under a bad GAUNTLET_PLUGIN_DIR sends the reader to a line that holds
+  // under a bad EXOLVRA_GENESIS_PLUGIN_DIR sends the reader to a line that holds
   // nothing they have to change.
-  const usage = /\nUsage: {2}gauntlet plan <goal-or-spec-path> \[flags\]\n/;
+  const usage = /\nUsage: {2}exolvra-genesis plan <goal-or-spec-path> \[flags\]\n/;
 
   for (const args of [
     ['plan', '--plugin-dir', MISSING, 'a goal'],
@@ -224,10 +224,10 @@ test('C5: a usage line goes under a bad flag, and never under a bad variable', (
     assert.match(stderr, usage, args.join(' ') + ' lost its usage line:\n' + stderr);
   }
 
-  for (const env of [{ GAUNTLET_PLUGIN_DIR: MISSING }, { GAUNTLET_PLUGIN_DIR: A_FILE }]) {
+  for (const env of [{ EXOLVRA_GENESIS_PLUGIN_DIR: MISSING }, { EXOLVRA_GENESIS_PLUGIN_DIR: A_FILE }]) {
     const { code, stderr } = record(run(['plan', 'a goal'], env));
     assert.equal(code, 2, 'a bad plugin directory must exit 2, got ' + code);
-    assert.ok(stderr.includes('GAUNTLET_PLUGIN_DIR'), 'the variable is unnamed:\n' + stderr);
+    assert.ok(stderr.includes('EXOLVRA_GENESIS_PLUGIN_DIR'), 'the variable is unnamed:\n' + stderr);
     assert.ok(
       !/\nUsage: {2}/.test(stderr),
       'a variable fault was answered with a usage line:\n' + stderr,
@@ -252,7 +252,7 @@ test('C5: malformed plugin markdown is a complaint with its remedy under it', ()
   writeFileSync(join(dir, 'agents', 'critic.md'), '---\nname: c\ndescription: d\n---\n\nBody.\n', 'utf8');
 
   const { code, stdout, stderr } = record(
-    run(['plan', 'a goal'], { GAUNTLET_PLUGIN_DIR: dir }),
+    run(['plan', 'a goal'], { EXOLVRA_GENESIS_PLUGIN_DIR: dir }),
   );
   assert.equal(code, 2, 'malformed plugin markdown must exit 2, got ' + code + '\n' + stderr);
   assert.equal(stdout, '');
@@ -276,7 +276,7 @@ const SUCCESSES = [
 ];
 
 for (const args of SUCCESSES) {
-  test('C5: `gauntlet ' + args.join(' ') + '` exits 0', () => {
+  test('C5: `exolvra-genesis ' + args.join(' ') + '` exits 0', () => {
     const { code, stdout, stderr } = record(run(args));
     assert.equal(code, 0, args.join(' ') + ' must exit 0, got ' + code);
     assert.equal(stderr, '', args.join(' ') + ' must print nothing to stderr');
@@ -323,8 +323,8 @@ test('C5: a preview that finishes exits 0 and prints the plan', () => {
   assert.equal(sent.model, 'claude-opus-5');
   assert.equal(sent.permissionMode, 'acceptEdits');
   assert.equal(sent.pluginDir, REPO_ROOT);
-  assert.equal(sent.agents['gauntlet-builder'].model, 'sonnet');
-  assert.equal(sent.agents['gauntlet-critic'].model, 'haiku');
+  assert.equal(sent.agents['exolvra-genesis-builder'].model, 'sonnet');
+  assert.equal(sent.agents['exolvra-genesis-critic'].model, 'haiku');
   assert.ok(sent.prompt.includes(SPEC), 'the spec path must reach the lead prompt');
 });
 
@@ -344,7 +344,7 @@ test('C5: a session that completes without a plan is not a win', () => {
 
   assert.equal(code, 1, 'a completed session with no plan must exit 1, got ' + code);
   assert.match(stderr, /the preview produced no plan/);
-  assert.match(stderr, /carried no gauntlet-plan block/);
+  assert.match(stderr, /carried no exolvra-genesis-plan block/);
   // What it did say is still shown, under a heading that does not call it a plan.
   assert.ok(stdout.includes('A path to a spec file'), 'the answer was swallowed');
   assert.ok(!stdout.includes('PREVIEW'), 'a question was framed as a preview');
@@ -411,7 +411,7 @@ for (const subtype of ['throw', 'throw_before_any_message']) {
     assert.equal(stdout, '');
     assert.match(stderr, /could not start a Claude Agent SDK session/);
     assert.match(stderr, /spawn node ENOENT/);
-    assert.match(stderr, /gauntlet help environment/);
+    assert.match(stderr, /exolvra-genesis help environment/);
   });
 }
 
@@ -431,7 +431,7 @@ for (const [subtype, needle] of [
     );
     assert.equal(code, 1, subtype + ' must exit 1, got ' + code + '\n' + stderr);
     assert.equal(stdout, '', 'nothing was produced, so nothing may be printed as output');
-    assert.match(stderr, /^gauntlet: unexpected error while running "plan"\n/, stderr);
+    assert.match(stderr, /^exolvra-genesis: unexpected error while running "plan"\n/, stderr);
     assert.match(stderr, needle, stderr);
     assert.match(stderr, /not a judgement of\n {2}the work/, stderr);
     assert.match(stderr, /report it at https:\/\/github\.com\/\S+\/issues/, stderr);
@@ -466,7 +466,7 @@ test('C5: a session that fails after it started is a lost run, exit 1', () => {
 });
 
 test('C5: a reader that goes away is one line, never a stack', async () => {
-  // `gauntlet ... | head -1` is a normal thing to type, and what it must not
+  // `exolvra-genesis ... | head -1` is a normal thing to type, and what it must not
   // produce is a Node stack about a stream the user never asked to know exists.
   // The reader here is destroyed before the child has booted, so the very first
   // write to stdout finds nothing on the other end.
@@ -545,11 +545,11 @@ test('C5: a plugin file that cannot be read exits 2, like any other bad setup', 
   }
 
   const { code, stdout, stderr } = record(
-    run(['plan', 'a bash script'], { GAUNTLET_PLUGIN_DIR: dir }),
+    run(['plan', 'a bash script'], { EXOLVRA_GENESIS_PLUGIN_DIR: dir }),
   );
   assert.equal(code, 2, 'an unreadable plugin file must exit 2, got ' + code + '\n' + stderr);
   assert.equal(stdout, '');
-  assert.match(stderr, /could not read the Gauntlet plugin markdown/);
+  assert.match(stderr, /could not read the Exolvra Genesis plugin markdown/);
   assert.ok(stderr.includes('commands/run.md'), stderr);
   assert.ok(stderr.includes(dir), 'the error must name where it looked: ' + stderr);
 });
@@ -571,9 +571,9 @@ test('C5: an error nothing classified is a blocked run, exit 1, and says so', ()
   const { code, stdout, stderr } = record(broken.run(['plan', 'a goal']));
   assert.equal(code, 1, 'a blocked run must exit 1, got ' + code + '\n' + stderr);
   assert.equal(stdout, '', 'nothing was produced, so nothing may be printed as output');
-  assert.match(stderr, /^gauntlet: unexpected error while running "plan"\n/, stderr);
+  assert.match(stderr, /^exolvra-genesis: unexpected error while running "plan"\n/, stderr);
   // A flag is not a command, so it is not named as one.
-  assert.match(broken.run(['--help']).stderr, /^gauntlet: unexpected error\n/);
+  assert.match(broken.run(['--help']).stderr, /^exolvra-genesis: unexpected error\n/);
   assert.ok(
     stderr.includes('a command module could not be loaded'),
     'the fault itself must be reported: ' + stderr,
@@ -590,15 +590,15 @@ test('C5: an error nothing classified is a blocked run, exit 1, and says so', ()
   );
   assert.match(
     run(['plan']).stderr,
-    /\nUsage: {2}gauntlet plan <goal-or-spec-path> \[flags\]\n/,
+    /\nUsage: {2}exolvra-genesis plan <goal-or-spec-path> \[flags\]\n/,
     'a usage error must still carry its usage line',
   );
 
   // The published contract says the same thing, in the same words.
   const topic = run(['help', 'exit-codes']).stdout;
   assert.match(topic, /blocked before a verdict was ever reached/);
-  assert.match(topic, /An internal error in gauntlet blocks the run, so it exits 1/);
-  assert.match(topic, /these three are the only codes gauntlet exits with/);
+  assert.match(topic, /An internal error in exolvra-genesis blocks the run, so it exits 1/);
+  assert.match(topic, /these three are the only codes exolvra-genesis exits with/);
 });
 
 test('C5: the EXIT constant matches what the processes returned', () => {

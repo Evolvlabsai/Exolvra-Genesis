@@ -1,2 +1,5 @@
-# Gauntlet run artifacts (bar captures, snapshots, progress page, state)
+# Exolvra Genesis run artifacts (bar captures, snapshots, progress page, state)
+.exolvra-genesis/
+
+# Run state written under the previous name, which existing checkouts still have
 .gauntlet/

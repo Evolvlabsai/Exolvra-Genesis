@@ -29,7 +29,7 @@ import {
 } from './tty.js';
 
 /*
- * `gauntlet run`, driven end to end as a real process.
+ * `exolvra-genesis run`, driven end to end as a real process.
  *
  * The Claude Agent SDK is the only thing substituted — the bar allows exactly
  * that and nothing else — and it is substituted at the same seam the CLI already
@@ -54,11 +54,11 @@ import { dirname, join } from 'node:path';
 let phaseIndex = 0;
 
 export function query({ prompt, options }) {
-  const plan = JSON.parse(readFileSync(process.env.GAUNTLET_RUN_FAKE, 'utf8'));
+  const plan = JSON.parse(readFileSync(process.env.EXOLVRA_GENESIS_RUN_FAKE, 'utf8'));
   const phase = plan.phases[Math.min(phaseIndex, plan.phases.length - 1)];
   phaseIndex += 1;
 
-  const record = process.env.GAUNTLET_RUN_FAKE_OPTIONS;
+  const record = process.env.EXOLVRA_GENESIS_RUN_FAKE_OPTIONS;
   if (record !== undefined && record !== '') {
     const seen = existsSync(record) ? JSON.parse(readFileSync(record, 'utf8')) : [];
     seen.push({
@@ -87,7 +87,7 @@ export function query({ prompt, options }) {
   });
 
   const writeState = (status) => {
-    const file = join(options.cwd, '.gauntlet', 'state.json');
+    const file = join(options.cwd, '.exolvra-genesis', 'state.json');
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify({ status }, null, 2) + '\\n', 'utf8');
   };
@@ -192,7 +192,7 @@ after(() => {
 
 /** A fresh directory for one run to work in, and to write its ledger under. */
 function workspace() {
-  const dir = mkdtempSync(join(tmpdir(), 'gauntlet-run-'));
+  const dir = mkdtempSync(join(tmpdir(), 'exolvra-genesis-run-'));
   WORKSPACES.push(dir);
   return dir;
 }
@@ -211,9 +211,9 @@ function runRun(args, { phases, cwd = workspace(), env = {} } = {}) {
   const result = runProcess(sandbox.bin, args, {
     cwd,
     env: {
-      GAUNTLET_RUN_FAKE: script,
-      GAUNTLET_RUN_FAKE_OPTIONS: record,
-      GAUNTLET_PLUGIN_DIR: REPO_ROOT,
+      EXOLVRA_GENESIS_RUN_FAKE: script,
+      EXOLVRA_GENESIS_RUN_FAKE_OPTIONS: record,
+      EXOLVRA_GENESIS_PLUGIN_DIR: REPO_ROOT,
       // A config of the machine's own would make these runs depend on whoever
       // ran them, so every run below is given an empty one to read.
       HOME: cwd,
@@ -228,9 +228,9 @@ function runRun(args, { phases, cwd = workspace(), env = {} } = {}) {
     ...result,
     cwd,
     sent: () => JSON.parse(readFileSync(record, 'utf8')),
-    runs: () => JSON.parse(readFileSync(join(cwd, '.gauntlet', 'runs.json'), 'utf8')),
-    stateText: () => readFileSync(join(cwd, '.gauntlet', 'state.json'), 'utf8'),
-    state: () => JSON.parse(readFileSync(join(cwd, '.gauntlet', 'state.json'), 'utf8')),
+    runs: () => JSON.parse(readFileSync(join(cwd, '.exolvra-genesis', 'runs.json'), 'utf8')),
+    stateText: () => readFileSync(join(cwd, '.exolvra-genesis', 'state.json'), 'utf8'),
+    state: () => JSON.parse(readFileSync(join(cwd, '.exolvra-genesis', 'state.json'), 'utf8')),
   };
 }
 
@@ -242,7 +242,7 @@ function round(piece, number, verdict, gap = '') {
     ' of ' +
     piece +
     ' has been judged.\n' +
-    '@gauntlet round ' +
+    '@exolvra-genesis round ' +
     piece +
     ' | ' +
     number +
@@ -256,11 +256,11 @@ function round(piece, number, verdict, gap = '') {
 /** The opening message of a run: the bar, its artifacts, and the pieces. */
 const OPENING = [
   'I picked the gh transcripts captured on this machine as the bar.',
-  '@gauntlet bar .gauntlet/bar',
-  '@gauntlet artifact .gauntlet/bar/gh/root-help.txt | gh --help',
-  '@gauntlet artifact .gauntlet/bar/gh/leaf-help-flags.txt | gh run list --help',
-  '@gauntlet piece P1 | The flag table and the leaf help',
-  '@gauntlet piece P2 | The exit-code contract',
+  '@exolvra-genesis bar .exolvra-genesis/bar',
+  '@exolvra-genesis artifact .exolvra-genesis/bar/gh/root-help.txt | gh --help',
+  '@exolvra-genesis artifact .exolvra-genesis/bar/gh/leaf-help-flags.txt | gh run list --help',
+  '@exolvra-genesis piece P1 | The flag table and the leaf help',
+  '@exolvra-genesis piece P2 | The exit-code contract',
 ].join('\n');
 
 /** A run that judges three rounds and finishes complete. */
@@ -322,7 +322,7 @@ test('R1: a missing goal with no terminal to ask is a usage error', () => {
   assert.equal(result.code, 2, result.stdout + result.stderr);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /accepts 1 arg, received 0/);
-  assert.match(result.stderr, /gauntlet run \[<goal-or-spec-path>\] \[flags\]/);
+  assert.match(result.stderr, /exolvra-genesis run \[<goal-or-spec-path>\] \[flags\]/);
   assert.match(result.stderr, /only when both ends are a terminal/);
 });
 
@@ -369,7 +369,7 @@ test('R4: --auto reaches the same turn as a piped run does', () => {
 /* -------------------------------------------------------------------------- */
 
 const AGENT_NAMES = (() => {
-  const sources = loadPluginSources({ GAUNTLET_PLUGIN_DIR: REPO_ROOT });
+  const sources = loadPluginSources({ EXOLVRA_GENESIS_PLUGIN_DIR: REPO_ROOT });
   return {
     builder: splitFrontmatter(sources.builderMd).fields.name,
     critic: splitFrontmatter(sources.criticMd).fields.name,
@@ -510,7 +510,7 @@ test('R10: --max-rounds stops at the limit, in both files, resumably', () => {
   assert.equal(record.rounds, 2, 'it stopped at the limit, not past it');
   assert.equal(record.sessionId, 'sesn_fake_run', 'a stopped run keeps its session');
   assert.equal(result.state().status, 'stopped', 'state.json must record it as stopped');
-  assert.match(result.stdout, /gauntlet resume r-/);
+  assert.match(result.stdout, /exolvra-genesis resume r-/);
 });
 
 test('R10: --max-cost stops an unfinished run on the provider figure', () => {
@@ -648,7 +648,7 @@ test('R10: SIGINT stops the run, records it, and prints how to resume it', () =>
 
   // The exact command, with the id the ledger recorded — not a description of it.
   assert.ok(
-    result.stdout.includes('gauntlet resume ' + record.id),
+    result.stdout.includes('exolvra-genesis resume ' + record.id),
     'the resume command was never printed:\n' + result.stdout,
   );
 });
@@ -764,7 +764,7 @@ test('R12: a gap keeps everything in it, delimiter and all', () => {
   // A gap is one sentence a critic wrote about work that failed, and a sentence
   // is entitled to contain the character this protocol separates fields with.
   const gap =
-    String.raw`the flag table omits defaults | the usage line says "gauntlet run" | the path C:\a\b is cut`;
+    String.raw`the flag table omits defaults | the usage line says "exolvra-genesis run" | the path C:\a\b is cut`;
   const result = runRun(['run', '--auto', '--json', 'a goal'], {
     phases: [
       {
@@ -810,7 +810,7 @@ test('R12: a bar captured before the stream dropped is still reported', () => {
   const events = ndjson(result.stdout);
   const bar = events.find((event) => event.type === 'bar_captured');
   assert.ok(bar !== undefined, 'the captured bar was never reported:\n' + result.stdout);
-  assert.equal(bar.path, '.gauntlet/bar');
+  assert.equal(bar.path, '.exolvra-genesis/bar');
   assert.equal(bar.artifacts.length, 2);
   assert.ok(events.some((event) => event.type === 'plan_ready'), result.stdout);
 });
@@ -821,8 +821,8 @@ test('R12: a report line this build cannot read is said out loud, once', () => {
       {
         messages: [
           OPENING,
-          '@gauntlet round P1 | not-a-number | WIN |',
-          '@gauntlet nonsense whatever',
+          '@exolvra-genesis round P1 | not-a-number | WIN |',
+          '@exolvra-genesis nonsense whatever',
           round('P1', 1, 'WIN'),
         ],
         state: 'complete',
@@ -838,7 +838,7 @@ test('R12: a report line this build cannot read is said out loud, once', () => {
   // Once: a run that says it forty times has buried the verdicts it was meant
   // to be reporting.
   assert.equal(warnings.length, 1, 'expected exactly one warning, got ' + warnings.length);
-  assert.match(warnings[0].message, /@gauntlet round P1 \| not-a-number \| WIN \|/);
+  assert.match(warnings[0].message, /@exolvra-genesis round P1 \| not-a-number \| WIN \|/);
 
   // And the round that was readable is still judged.
   assert.equal(
@@ -929,10 +929,10 @@ test('R12: the bar and the pieces are reported before the first round', () => {
   assert.ok(types.indexOf('plan_ready') < types.indexOf('round'));
 
   const bar = events.find((event) => event.type === 'bar_captured');
-  assert.equal(bar.path, '.gauntlet/bar');
+  assert.equal(bar.path, '.exolvra-genesis/bar');
   assert.equal(bar.artifacts.length, 2);
   assert.deepEqual(bar.artifacts[0], {
-    path: '.gauntlet/bar/gh/root-help.txt',
+    path: '.exolvra-genesis/bar/gh/root-help.txt',
     detail: 'gh --help',
   });
 
@@ -943,11 +943,11 @@ test('R12: the bar and the pieces are reported before the first round', () => {
 test('R12: the human view prints a column per round and no marker lines', () => {
   const result = runRun(['run', '--auto', 'a goal'], {
     phases: WINNING_RUN,
-    env: { GAUNTLET_FORCE_TTY: '80' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '80' },
   });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.ok(!result.stdout.includes('@gauntlet'), 'a marker line reached the reader');
+  assert.ok(!result.stdout.includes('@exolvra-genesis'), 'a marker line reached the reader');
   // piece, round, verdict, elapsed, gap — five columns, in that order, with the
   // gap last because it is the only one that may be cut to fit.
   assert.match(result.stdout, /^P1 +1 +. LOSS +\d+s +the flag table omits defaults$/m);
@@ -964,7 +964,7 @@ test('the progress page path prints at the start of every run', () => {
   const result = runRun(['run', '--auto', '--json', 'a goal'], { phases: WINNING_RUN });
   const notices = ndjson(result.stdout).filter((event) => event.type === 'notice');
   assert.ok(
-    notices.some((notice) => notice.message === '.gauntlet/progress.html'),
+    notices.some((notice) => notice.message === '.exolvra-genesis/progress.html'),
     'the progress page was never named:\n' + result.stdout,
   );
 });
@@ -978,13 +978,13 @@ test('the progress page is named in full once --directory points elsewhere', () 
   const notices = ndjson(result.stdout).filter((event) => event.type === 'notice');
   assert.ok(
     notices.some(
-      (notice) => notice.message === join(elsewhere, '.gauntlet', 'progress.html'),
+      (notice) => notice.message === join(elsewhere, '.exolvra-genesis', 'progress.html'),
     ),
     'a redirected run must name the page it really writes:\n' + result.stdout,
   );
   // And the ledger it wrote is the one in the directory it was pointed at.
   assert.equal(
-    JSON.parse(readFileSync(join(elsewhere, '.gauntlet', 'runs.json'), 'utf8'))[0].status,
+    JSON.parse(readFileSync(join(elsewhere, '.exolvra-genesis', 'runs.json'), 'utf8'))[0].status,
     'complete',
   );
 });
@@ -1282,14 +1282,14 @@ function seedLedger(cwd, patch = {}) {
     lastVerdict: 'LOSS',
     ...patch,
   };
-  mkdirSync(join(cwd, '.gauntlet'), { recursive: true });
+  mkdirSync(join(cwd, '.exolvra-genesis'), { recursive: true });
   writeFileSync(
-    join(cwd, '.gauntlet', 'runs.json'),
+    join(cwd, '.exolvra-genesis', 'runs.json'),
     JSON.stringify([record], null, 2) + '\n',
     'utf8',
   );
   writeFileSync(
-    join(cwd, '.gauntlet', 'state.json'),
+    join(cwd, '.exolvra-genesis', 'state.json'),
     JSON.stringify({ status: 'stopped' }, null, 2) + '\n',
     'utf8',
   );
@@ -1307,7 +1307,7 @@ test('resume reports rounds and never prints the protocol at the reader', () => 
         messages: [round('P2', 2, 'WIN'), round('P3', 1, 'WIN')],
         state: 'complete',
         result: {
-          text: 'Run finished.\n@gauntlet round P3 | 1 | WIN |',
+          text: 'Run finished.\n@exolvra-genesis round P3 | 1 | WIN |',
           costUsd: 0.75,
         },
       },
@@ -1318,7 +1318,7 @@ test('resume reports rounds and never prints the protocol at the reader', () => 
   // The markers are addressed to this CLI. They have already become the round
   // lines above; printing them as well would be showing the envelope.
   assert.equal(
-    result.stdout.includes('@gauntlet'),
+    result.stdout.includes('@exolvra-genesis'),
     false,
     'resume printed the protocol at the reader:\n' + result.stdout,
   );
@@ -1358,7 +1358,7 @@ test('R6: a resumed run that did not finish stays resumable', () => {
   assert.equal(record.lastVerdict, 'LOSS');
   assert.equal(first.state().status, 'stopped', 'the two files disagree');
   assert.ok(
-    first.stdout.includes('resume it with: gauntlet resume ' + seeded.id),
+    first.stdout.includes('resume it with: exolvra-genesis resume ' + seeded.id),
     first.stdout,
   );
 
@@ -1474,7 +1474,7 @@ test('a blocked run is offered by the picker, not only by name', async () => {
   assert.equal(isUnfinished({ status: 'complete' }), false);
 
   // And the three routes agree. By name, a blocked run resumes: what `run`
-  // prints when it blocks is `gauntlet resume <id>`, and that has to work.
+  // prints when it blocks is `exolvra-genesis resume <id>`, and that has to work.
   const cwd = workspace();
   const seeded = seedLedger(cwd, { status: 'blocked', rounds: 1, lastVerdict: 'BLOCKED' });
   const byName = runRun(['resume', seeded.id], {
@@ -1529,7 +1529,7 @@ test('cancelling the resume picker is not a crash', async () => {
     },
   ];
 
-  beginRun('gauntlet resume', { input: io.input, output: io.output });
+  beginRun('exolvra-genesis resume', { input: io.input, output: io.output });
   const driver = (async () => {
     await waitFor(io, 'Resume which run?');
     await press(io, CTRL_C);
@@ -1636,7 +1636,7 @@ test('a value survives the ledger and every human view byte for byte', () => {
   const wide = runRun(['runs', '-C', cwd], {
     cwd,
     phases: WINNING_RUN,
-    env: { GAUNTLET_FORCE_TTY: '200' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '200' },
   });
   assert.ok(wide.stdout.includes(goal), 'the terminal table rewrote the goal:\n' + wide.stdout);
 
@@ -1645,7 +1645,7 @@ test('a value survives the ledger and every human view byte for byte', () => {
   const redirected = runRun(['run', '--auto', '--json', '-C', elsewhere, 'a goal'], {
     phases: WINNING_RUN,
   });
-  const page = join(elsewhere, '.gauntlet', 'progress.html');
+  const page = join(elsewhere, '.exolvra-genesis', 'progress.html');
   assert.ok(
     ndjson(redirected.stdout).some(
       (event) => event.type === 'notice' && event.message === page,
@@ -1693,7 +1693,7 @@ function surface({ verbose = false, open = false } = {}) {
   const out = progressStream(io.output, progress);
   const frameIo = { input: io.input, output: out };
   // Opened by the run rather than by the questionnaire, exactly as run.ts does.
-  if (open) beginRun('gauntlet run', frameIo);
+  if (open) beginRun('exolvra-genesis run', frameIo);
   const frame = createRunFrame(frameIo, { verbose, progress });
   return { io, progress, frame };
 }
@@ -1702,10 +1702,10 @@ const PLAN_EVENTS = [
   { type: 'run_started', goal: 'specs/checkout-flow.md', source: 'spec' },
   {
     type: 'bar_captured',
-    path: '.gauntlet/bar',
+    path: '.exolvra-genesis/bar',
     artifacts: [
-      { path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help' },
-      { path: '.gauntlet/bar/gh/leaf-help-flags.txt', detail: 'gh run list --help' },
+      { path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help' },
+      { path: '.exolvra-genesis/bar/gh/leaf-help-flags.txt', detail: 'gh run list --help' },
     ],
   },
   { type: 'plan_ready', pieces: [{ id: 'P1', title: 'Leaf help' }, { id: 'P2', title: 'Exit codes' }] },
@@ -1848,7 +1848,7 @@ test('the frame closes with the rail on a win, on a stop, and on a cancel', asyn
   cancelled.frame.emit({
     type: 'notice',
     level: 'note',
-    message: 'resume it with: gauntlet resume r-x',
+    message: 'resume it with: exolvra-genesis resume r-x',
   });
   cancelled.frame.close('Stopped — 0 rounds for $0.15');
   assert.match(frames(cancelled.io.raw()).at(-1), /^└ {2}Stopped — 0 rounds/);
@@ -1871,7 +1871,9 @@ test('the closing line fits, so nothing on it is ever cut in half', () => {
     frame.emit({
       type: 'notice',
       level: 'note',
-      message: 'resume it with: gauntlet resume r-20260811-1259-9dd663',
+      message: 'resume it with: exolvra-genesis resume r-20260811-1259-9dd663',
+      // Exactly what finish() marks it with: a command, never folded.
+      keepWhole: true,
     });
     progress.suspend();
     frame.close('Stopped — 12 rounds for $148.75');
@@ -1899,9 +1901,21 @@ test('the closing line fits, so nothing on it is ever cut in half', () => {
         'the run id was cut at ' + columns + ': ' + row,
       );
     }
-    assert.ok(
-      drawn.some((row) => row.includes('gauntlet resume')),
-      'the command to resume with was lost at ' + columns,
+    // One row, whole, at every width. A command folded inside the frame is
+    // folded with the rail down the middle of it, so copying it off two rows
+    // picks the rail up too and the paste does not run — the terminal
+    // soft-wraps this instead, which keeps it one line to anything selecting
+    // it. That is why the closing line does not have to carry it at all.
+    const carrying = drawn.filter((row) => row.includes('exolvra-genesis resume'));
+    assert.equal(
+      carrying.length,
+      1,
+      'the command was drawn over several rows at ' + columns + ':\n' + drawn.join('\n'),
+    );
+    assert.equal(
+      carrying[0].replace(/^[│●◆▲■]\s*/, ''),
+      'resume it with: exolvra-genesis resume r-20260811-1259-9dd663',
+      'the command was rewritten at ' + columns + ': ' + carrying[0],
     );
   }
 });
@@ -1921,7 +1935,7 @@ test('a run is drawn in one frame, with rails and a verdict per round', async ()
   // the left margin an eye can run down.
   assert.ok(drawn.includes('◇  Run plan '), drawn);
   assert.ok(drawn.includes('spec'), drawn);
-  assert.ok(drawn.includes('.gauntlet/bar (2 artifacts)'), drawn);
+  assert.ok(drawn.includes('.exolvra-genesis/bar (2 artifacts)'), drawn);
   assert.ok(drawn.includes('P1, P2'), drawn);
   assert.match(drawn, /^◆ {2}P1 +round 2 +WIN$/m);
   assert.match(drawn, /^▲ {2}P1 +round 1 +LOSS +the flag table omits defaults$/m);
@@ -1949,7 +1963,7 @@ test('a verbose report keeps its lines, and every one of them keeps its rail', a
   ].join('\n');
 
   frame.emit({ type: 'run_started', goal: 'a goal', source: 'goal' });
-  frame.emit({ type: 'agent_output', agent: 'gauntlet-builder', piece: 'P1', round: 2, text: report });
+  frame.emit({ type: 'agent_output', agent: 'exolvra-genesis-builder', piece: 'P1', round: 2, text: report });
   frame.close('Won — 1 round');
 
   const drawn = screen(io.raw());
@@ -1997,7 +2011,7 @@ test('a verbose report keeps its lines, and every one of them keeps its rail', a
 test('a value too long for the box is cut once, and never wrapped as well', async () => {
   const { noteRunPlan } = await import('../dist/prompts.js');
   const io = fakeTty({ columns: 80 });
-  const long = String.raw`C:\Users\eight\AppData\Local\Temp\gauntlet\w30target\.gauntlet\progress.html`;
+  const long = String.raw`C:\Users\eight\AppData\Local\Temp\exolvra-genesis\w30target\.exolvra-genesis\progress.html`;
   const short = String.raw`C:\dir\.hidden\file.txt`;
 
   noteRunPlan(
@@ -2156,15 +2170,15 @@ test('evidence: the interactive frame, drawn end to end', async () => {
   const { io, frame, progress } = surface({ open: true });
 
   frame.emit({ type: 'run_started', goal: 'specs/checkout-flow.md', source: 'spec' });
-  frame.emit({ type: 'notice', level: 'note', message: '.gauntlet/progress.html' });
+  frame.emit({ type: 'notice', level: 'note', message: '.exolvra-genesis/progress.html' });
   frame.emit({
     type: 'bar_captured',
-    path: '.gauntlet/bar',
+    path: '.exolvra-genesis/bar',
     artifacts: [
-      { path: '.gauntlet/bar/gh/root-help.txt', detail: 'gh --help' },
-      { path: '.gauntlet/bar/gh/leaf-help-flags.txt', detail: 'gh run list --help' },
-      { path: '.gauntlet/bar/gh/list-output.txt', detail: 'gh run list' },
-      { path: '.gauntlet/bar/clack/frames-plain.txt', detail: 'clack 1.7.0' },
+      { path: '.exolvra-genesis/bar/gh/root-help.txt', detail: 'gh --help' },
+      { path: '.exolvra-genesis/bar/gh/leaf-help-flags.txt', detail: 'gh run list --help' },
+      { path: '.exolvra-genesis/bar/gh/list-output.txt', detail: 'gh run list' },
+      { path: '.exolvra-genesis/bar/clack/frames-plain.txt', detail: 'clack 1.7.0' },
     ],
   });
   frame.emit({
@@ -2216,7 +2230,7 @@ test('evidence: the interactive frame, drawn end to end', async () => {
   frame.emit({
     type: 'notice',
     level: 'note',
-    message: 'resume it with: gauntlet resume r-20260811-0701-9dd663',
+    message: 'resume it with: exolvra-genesis resume r-20260811-0701-9dd663',
   });
   // Inside a frame the closing rail is the last word, so the progress line only
   // gets out of the way — exactly what finish() does when there is a frame.
@@ -2238,7 +2252,7 @@ test('evidence: the interactive frame, drawn end to end', async () => {
   writeFileSync(
     join(EVIDENCE, 'run-frame.txt'),
     [
-      'gauntlet run on a terminal, captured from the shipped code.',
+      'exolvra-genesis run on a terminal, captured from the shipped code.',
       '',
       'The frame, the progress line and the questions are the real ones —',
       'src/prompts.ts, src/usage.ts and @clack/prompts 1.7.0 — driven against a',
@@ -2252,7 +2266,7 @@ test('evidence: the interactive frame, drawn end to end', async () => {
       'stopped by --max-cost. Written by test/run.test.js.',
       '',
       '='.repeat(72),
-      '$ gauntlet run specs/checkout-flow.md',
+      '$ exolvra-genesis run specs/checkout-flow.md',
       '='.repeat(72),
       '',
       drawn,
@@ -2274,7 +2288,7 @@ test('evidence: --verbose inside the frame, railed line by line', async () => {
 
   frame.emit({
     type: 'agent_output',
-    agent: 'gauntlet-builder',
+    agent: 'exolvra-genesis-builder',
     piece: 'P1',
     round: 1,
     text: [
@@ -2305,7 +2319,7 @@ test('evidence: --verbose inside the frame, railed line by line', async () => {
   });
   frame.emit({
     type: 'agent_output',
-    agent: 'gauntlet-critic',
+    agent: 'exolvra-genesis-critic',
     piece: 'P1',
     round: 1,
     text: ['VERDICT', 'WIN', '', 'GAP', 'none: the flag table carries every default.'].join('\n'),
@@ -2325,7 +2339,7 @@ test('evidence: --verbose inside the frame, railed line by line', async () => {
   writeFileSync(
     join(EVIDENCE, 'run-frame-verbose.txt'),
     [
-      'gauntlet run --verbose on a terminal, captured from the shipped code.',
+      'exolvra-genesis run --verbose on a terminal, captured from the shipped code.',
       '',
       'What the agents wrote, inside the frame. A report is many lines and its',
       'structure is carried by its indentation, so the lines are handed to',
@@ -2338,7 +2352,7 @@ test('evidence: --verbose inside the frame, railed line by line', async () => {
       'screen ends up showing. Written by test/run.test.js.',
       '',
       '='.repeat(72),
-      '$ gauntlet run --verbose specs/checkout-flow.md',
+      '$ exolvra-genesis run --verbose specs/checkout-flow.md',
       '='.repeat(72),
       '',
       drawn,
@@ -2374,7 +2388,7 @@ test('evidence: resume, drawn in the same frame a run is', async () => {
   ];
 
   // The pick and the run it leads to are one frame, opened once.
-  beginRun('gauntlet resume', { input: io.input, output: io.output });
+  beginRun('exolvra-genesis resume', { input: io.input, output: io.output });
   const driver = (async () => {
     await waitFor(io, 'Resume which run?');
     await sleep(150);
@@ -2389,7 +2403,7 @@ test('evidence: resume, drawn in the same frame a run is', async () => {
   const frame = createRunFrame({ input: io.input, output: out }, { verbose: false, progress });
 
   frame.emit({ type: 'run_started', goal: chosen.input, source: 'spec' });
-  frame.emit({ type: 'notice', level: 'note', message: '.gauntlet/progress.html' });
+  frame.emit({ type: 'notice', level: 'note', message: '.exolvra-genesis/progress.html' });
   frame.emit({
     type: 'plan_ready',
     pieces: [{ id: 'P2', title: 'The exit-code contract' }, { id: 'P3', title: 'Startup' }],
@@ -2409,7 +2423,7 @@ test('evidence: resume, drawn in the same frame a run is', async () => {
   frame.close('Won — 5 rounds for $6.20');
 
   const drawn = screen(io.raw()).join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
-  assert.match(drawn, /^┌ {2}gauntlet resume$/m, drawn);
+  assert.match(drawn, /^┌ {2}exolvra-genesis resume$/m, drawn);
   assert.match(drawn, /└ {2}Won — 5 rounds/, drawn);
   assert.match(drawn, /^◆ {2}P2 +round 3 +WIN$/m, drawn);
   assert.equal(drawn.includes('✓'), false, 'resume drew a glyph a run never draws');
@@ -2418,7 +2432,7 @@ test('evidence: resume, drawn in the same frame a run is', async () => {
   writeFileSync(
     join(EVIDENCE, 'resume-frame.txt'),
     [
-      'gauntlet resume on a terminal, captured from the shipped code.',
+      'exolvra-genesis resume on a terminal, captured from the shipped code.',
       '',
       'The same frame, the same picker and the same verdict lines a run draws —',
       'src/commands/resume.ts routes through src/prompts.ts exactly as',
@@ -2429,7 +2443,7 @@ test('evidence: resume, drawn in the same frame a run is', async () => {
       'closed once at the bottom. Written by test/run.test.js.',
       '',
       '='.repeat(72),
-      '$ gauntlet resume',
+      '$ exolvra-genesis resume',
       '='.repeat(72),
       '',
       drawn,
@@ -2454,7 +2468,7 @@ test('evidence: resume piped is records, and only records', () => {
           round('P3', 2, 'WIN'),
         ],
         state: 'complete',
-        result: { text: 'Both pieces won.\n@gauntlet round P3 | 2 | WIN |', costUsd: 1.45 },
+        result: { text: 'Both pieces won.\n@exolvra-genesis round P3 | 2 | WIN |', costUsd: 1.45 },
       },
     ],
   });
@@ -2463,7 +2477,7 @@ test('evidence: resume piped is records, and only records', () => {
   for (const line of piped.stdout.split('\n').filter((line) => line !== '')) {
     assert.ok(line.includes('\t'), 'a resumed run wrote something that is not a record: ' + line);
   }
-  assert.equal(piped.stdout.includes('@gauntlet'), false, 'the protocol reached the reader');
+  assert.equal(piped.stdout.includes('@exolvra-genesis'), false, 'the protocol reached the reader');
 
   // `cut -f1` on this stream returns record labels and piece ids, and never a
   // fragment of a sentence — which is the whole point of the discipline.
@@ -2479,7 +2493,7 @@ test('evidence: resume piped is records, and only records', () => {
   writeFileSync(
     join(EVIDENCE, 'resume-session.txt'),
     [
-      'gauntlet resume with stdout on a pipe, captured from the built binary as',
+      'exolvra-genesis resume with stdout on a pipe, captured from the built binary as',
       'a child process against a scripted transport.',
       '',
       'No terminal, so no frame and no marks: one tab-delimited record per event,',
@@ -2487,7 +2501,7 @@ test('evidence: resume piped is records, and only records', () => {
       'onto the end of them. The markers the run reports with are read by this CLI',
       'and never printed at the reader. Written by test/run.test.js.',
       '',
-      block('a resumed run that finished', 'gauntlet resume ' + seeded.id + ' | cat', piped),
+      block('a resumed run that finished', 'exolvra-genesis resume ' + seeded.id + ' | cat', piped),
       '',
       'And the first field of every line, which is what `cut -f1` returns:',
       '',
@@ -2503,7 +2517,7 @@ test('evidence: a captured run transcript, human and machine', () => {
 
   const human = runRun(TRANSCRIPT_ARGS, {
     phases: TRANSCRIPT_RUN,
-    env: { GAUNTLET_FORCE_TTY: '80' },
+    env: { EXOLVRA_GENESIS_FORCE_TTY: '80' },
   });
   const piped = runRun(TRANSCRIPT_ARGS, { phases: TRANSCRIPT_RUN });
   const machine = runRun([...TRANSCRIPT_ARGS, '--json'], { phases: TRANSCRIPT_RUN });
@@ -2526,14 +2540,14 @@ test('evidence: a captured run transcript, human and machine', () => {
   }
 
   const command =
-    'gauntlet run --auto --max-cost 4 --model claude-opus-5 \\\n' +
+    'exolvra-genesis run --auto --max-cost 4 --model claude-opus-5 \\\n' +
     '      --builder-model sonnet --critic-model opus \\\n' +
     '      "a CLI whose help output is indistinguishable from gh"';
 
   writeFileSync(
     join(EVIDENCE, 'run-session.txt'),
     [
-      'gauntlet run, captured from the built binary as a child process.',
+      'exolvra-genesis run, captured from the built binary as a child process.',
       '',
       'The Claude Agent SDK is replaced by a scripted transport at the seam',
       'src/session.ts already has for it; everything else below — the flag',
@@ -2543,7 +2557,7 @@ test('evidence: a captured run transcript, human and machine', () => {
       'The run below skips the review pause, judges four rounds across two',
       'pieces, and is stopped by --max-cost before the fifth. Written by',
       'test/run.test.js; laid out for an 80-column terminal via',
-      'GAUNTLET_FORCE_TTY, which is why the columns are aligned in a file.',
+      'EXOLVRA_GENESIS_FORCE_TTY, which is why the columns are aligned in a file.',
       '',
       'That same variable is what draws the progress indicator, so the escape',
       'sequences below are on STDERR and only there: STDOUT is the report, and',

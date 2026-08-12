@@ -138,7 +138,7 @@ const interviewCommand: Command = {
     'Talk your way to a spec and a mockup, ready to run.',
     'interview loads the commands/interview.md it finds on disk and holds the\nconversation it describes: one question at a time, your answer resuming the same\nsession, until it hands off. What it asks, what it writes, and when it stops are\nin that file — this command carries the questions to you and your answers back.',
     'A path to an existing spec starts a modification pass. Anything else is a\none-line idea to start from, and no argument at all starts from nothing.',
-    'It is a conversation, so it needs a terminal on both ends and exits 2 without\none. There is no --json: a stream of questions nobody can answer is not machine\noutput. It writes the spec and the mockup and nothing else — no run is started,\nno ledger row is added, and .gauntlet/state.json is untouched, because an\ninterview is not a run.',
+    'It is a conversation, so it needs a terminal on both ends and exits 2 without\none. There is no --json: a stream of questions nobody can answer is not machine\noutput. It writes the spec and the mockup and nothing else — no run is started,\nno ledger row is added, and .exolvra-genesis/state.json is untouched, because an\ninterview is not a run.',
     'When both files are approved it prints the exact command to run next. Ctrl+C at\nany question ends it; the files written so far are yours to keep.',
   ],
   flags,
@@ -185,7 +185,7 @@ const withoutArgument: Command = { ...interviewCommand, argument: undefined };
 /* The one thing the CLI asks to be told                                       */
 /* -------------------------------------------------------------------------- */
 
-const MARKER = '@gauntlet';
+const MARKER = '@exolvra-genesis';
 
 /**
  * What the CLI needs back, and nothing about what to say.
