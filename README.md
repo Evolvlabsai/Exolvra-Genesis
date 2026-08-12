@@ -1,7 +1,8 @@
 # Exolvra Genesis
 
 *A minimal orchestration loop for Claude Code: builders vs. blind critics,
-against a concrete quality bar, until the work actually wins.*
+against a concrete quality bar, until the work actually wins. A small,
+self-contained excerpt of [Exolvra OS](https://exolvra.ai).*
 
 ![The live progress page mid-run: hard gates, per-piece verdicts, and the round log while the loop chases two consecutive blind wins](docs/progress.png)
 
@@ -198,6 +199,28 @@ are off by default and nothing depends on them.
 - **Not a prompt library.** There is exactly one loop, and the bar — not the
   prompt — is what you customize per task.
 
+## Part of Exolvra
+
+Exolvra Genesis is a small excerpt of a much bigger machine. It is the
+genesis phase of **Exolvra OS** distilled: the interview, the spec, a mockup
+you approve by using it, and a build loop that ends only when the work beats
+a bar nobody graded on trust.
+
+[Exolvra OS](https://exolvra.ai) applies the same discipline to the whole
+life of an application. Specs are approved at doors and recorded immutably.
+Human decisions are enforced by the platform, not promised by a prompt. The
+loop you just read about keeps going after genesis — through delivery,
+release, and operations — with an audit trail behind everything.
+
+And [Exolvra](https://exolvra.ai) is the workplace those agents do it in:
+the right software for your agents. Not another chat window — a project
+board where work is assigned, real tools to do it with, and reviews before
+anything ships.
+
+If this repo's philosophy clicks for you — evidence over claims, verdicts
+over vibes — the full platform is the same idea grown up.
+**[Join the waitlist →](https://exolvra.ai)**
+
 ## Credits
 
 The pattern originates with Matt Shumer's Claude-of-Duty experiment. Exolvra Genesis
@@ -208,6 +231,3 @@ spirit.
 ## License
 
 [MIT](LICENSE)
-
-<!-- Building something bigger on the same evidence-over-claims philosophy?
-     Link it here. -->
