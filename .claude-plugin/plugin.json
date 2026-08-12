@@ -4,10 +4,10 @@
   "description": "Minimal Gauntlet Loop orchestrator for Claude Code: a lead agent iterates builder subagents against blind, fresh-context critics comparing real output to a concrete quality bar, until the assembled work wins twice in a row.",
   "author": {
     "name": "Derrick",
-    "url": "https://github.com/YOUR-GITHUB-USERNAME"
+    "url": "https://github.com/Evolvlabsai"
   },
-  "homepage": "https://github.com/YOUR-GITHUB-USERNAME/gauntlet",
-  "repository": "https://github.com/YOUR-GITHUB-USERNAME/gauntlet",
+  "homepage": "https://github.com/Evolvlabsai/Exolvra-Genesis",
+  "repository": "https://github.com/Evolvlabsai/Exolvra-Genesis",
   "license": "MIT",
   "keywords": [
     "orchestration",

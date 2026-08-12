@@ -6,7 +6,7 @@ export const PROGRAM = 'gauntlet';
 export const TAGLINE =
   'Run adversarial build loops against a concrete quality bar.';
 
-export const MANUAL_URL = 'https://github.com/YOUR-GITHUB-USERNAME/gauntlet';
+export const MANUAL_URL = 'https://github.com/Evolvlabsai/Exolvra-Genesis';
 
 export const ROOT_USAGE = `${PROGRAM} <command> [flags]`;
 

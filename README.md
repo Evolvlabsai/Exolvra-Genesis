@@ -43,7 +43,7 @@ block — so every run, on every user's machine, gets the same card.
 ## Quickstart
 
 ```
-/plugin marketplace add YOUR-GITHUB-USERNAME/gauntlet
+/plugin marketplace add Evolvlabsai/Exolvra-Genesis
 /plugin install gauntlet@gauntlet
 /gauntlet:run Build a landing page indistinguishable from <your reference>
 ```
