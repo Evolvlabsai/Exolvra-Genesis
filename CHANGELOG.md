@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-08-11
+
+- Bar immutability is now a mechanism, not only a convention:
+  `hooks/bar-integrity-gate.example.json` (opt-in, like the Stop gate) checks
+  the bar's sha256 pins before every subagent dispatch and blocks the
+  dispatch if any artifact drifted. To support it, the lead now writes the
+  pins twice at capture — human-readable in `bar/BAR.md` as before, and
+  machine-checkable as `bar/bar.sha256` in `sha256sum` format.
+
 ## 0.5.0 — 2026-08-11
 
 - Critics no longer silently degrade when they cannot perceive the bar: if

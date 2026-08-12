@@ -1,0 +1,16 @@
+{
+  "_comment": "OPT-IN. Copy the 'hooks' block below into your project's .claude/settings.json to enable the gate. Before every subagent dispatch it re-checks the machine-readable pins the lead writes at bar capture (.exolvra-genesis/bar/bar.sha256, sha256sum format) — turning the bar's immutability from a convention into a mechanism: a tampered or drifted bar blocks the next builder or critic from being sent at all. Nothing in the plugin depends on it.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=.exolvra-genesis/bar/bar.sha256; [ -f \"$f\" ] || exit 0; (cd .exolvra-genesis/bar && sha256sum -c bar.sha256) >/dev/null 2>&1 && exit 0; echo 'Exolvra Genesis bar integrity check failed: an artifact under .exolvra-genesis/bar/ no longer matches the pins in bar.sha256. The bar is immutable for the run - restore the artifacts (or stop the run) before dispatching another agent.' >&2; exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

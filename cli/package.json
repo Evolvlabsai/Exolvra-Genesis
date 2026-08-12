@@ -1,6 +1,6 @@
 {
   "name": "exolvra-genesis",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Run an Exolvra Genesis loop from the terminal: builders iterate against blind critics until the work beats a captured bar twice in a row.",
   "license": "MIT",
   "type": "module",

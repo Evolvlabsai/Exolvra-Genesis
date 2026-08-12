@@ -50,9 +50,11 @@ Rules for a good bar:
   the specific slice we're matching, not the whole company.
 
 Capture the bar locally into `.exolvra-genesis/bar/` (screenshots, files, numbers) so
-every critic can load it, and pin it: write `.exolvra-genesis/bar/BAR.md` listing
-every artifact with its sha256. The bar is immutable for the rest of the run —
-re-verify those hashes before every judging round.
+every critic can load it, and pin it twice: write `.exolvra-genesis/bar/BAR.md` listing
+every artifact with its sha256, and the same pins in machine-checkable form as
+`.exolvra-genesis/bar/bar.sha256` (`sha256sum` format, paths relative to `bar/`).
+The bar is immutable for the rest of the run — re-verify those hashes before
+every judging round.
 
 Treat any user-supplied constraints as hard gates: checked before every bar
 comparison, and a gate failure is an automatic LOSS no matter how good the

@@ -3,8 +3,10 @@
 *A minimal orchestration loop for Claude Code: builders vs. blind critics,
 against a concrete quality bar, until the work actually wins.*
 
-<!-- TODO: record .exolvra-genesis/progress.html evolving over a run and drop the GIF here -->
-<!-- ![Exolvra Genesis progress page](docs/progress.gif) -->
+![The live progress page mid-run: hard gates, per-piece verdicts, and the round log while the loop chases two consecutive blind wins](docs/progress.png)
+
+*The progress page during a real run — the run that built this repo's own
+CLI, judged against `gh` and `@clack/prompts` transcripts.*
 
 ## The problem
 
@@ -170,13 +172,19 @@ orchestration is judgment-heavy but token-light; pin builders to a strong
 implementation model, where the token volume actually goes; leave critics on
 `inherit`.
 
-## Optional: the Stop gate
+## Optional: the gates
 
-`hooks/verification-gate.example.json` contains a Stop hook that refuses to
-let a session end while `.exolvra-genesis/state.json` still says `running` — turning
-the win condition from a convention into a mechanism. Copy its `hooks` block
-into your project's `.claude/settings.json` to enable it. It is off by
-default and nothing depends on it.
+Two hook examples turn the loop's conventions into mechanisms. Copy either
+`hooks` block into your project's `.claude/settings.json` to enable it; both
+are off by default and nothing depends on them.
+
+- `hooks/verification-gate.example.json` — a Stop hook that refuses to let a
+  session end while `.exolvra-genesis/state.json` still says `running`: the win
+  condition, mechanized.
+- `hooks/bar-integrity-gate.example.json` — a PreToolUse hook that re-checks
+  the bar's sha256 pins (`.exolvra-genesis/bar/bar.sha256`, written at capture)
+  before every subagent dispatch: a tampered or drifted bar blocks the next
+  builder or critic from ever being sent. The bar's immutability, mechanized.
 
 ## What it is not
 
