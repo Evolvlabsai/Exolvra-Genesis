@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 
 import { EXIT, exitCodeForOutput } from '../dist/exit.js';
+import { PLUGIN_FILES } from '../dist/plugin-dir.js';
 import {
   BIN,
   REPO_ROOT,
@@ -242,7 +243,11 @@ test('C5: malformed plugin markdown is a complaint with its remedy under it', ()
   const dir = mkdtempSync(join(FIXTURES, 'malformed-plugin-'));
   mkdirSync(join(dir, 'commands'));
   mkdirSync(join(dir, 'agents'));
+  mkdirSync(join(dir, 'templates'));
   writeFileSync(join(dir, 'commands', 'run.md'), '---\nname: run\n---\n\nBody.\n', 'utf8');
+  writeFileSync(join(dir, 'commands', 'interview.md'), '---\nname: i\n---\n\nBody.\n', 'utf8');
+  writeFileSync(join(dir, 'templates', 'progress.html'), '<!doctype html>\n', 'utf8');
+  // The one that is wrong: an agent file with no name.
   writeFileSync(join(dir, 'agents', 'builder.md'), '---\ndescription: b\n---\n\nBody.\n', 'utf8');
   writeFileSync(join(dir, 'agents', 'critic.md'), '---\nname: c\ndescription: d\n---\n\nBody.\n', 'utf8');
 
@@ -502,7 +507,9 @@ test('C5: a plugin file that cannot be read exits 2, like any other bad setup', 
   // classified, and which therefore exited 1. Exit 1 tells CI a run lost; no
   // run had started.
   const dir = mkdtempSync(join(FIXTURES, 'unreadable-plugin-'));
-  for (const relative of ['commands/run.md', 'agents/builder.md', 'agents/critic.md']) {
+  // Every file the loader needs, so what is under test is the unreadable one
+  // rather than a missing one.
+  for (const relative of Object.values(PLUGIN_FILES)) {
     const file = join(dir, relative);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, '# ' + relative + '\n', 'utf8');

@@ -321,7 +321,7 @@ test('an unknown command exits 2 with a gh-shaped error naming what exists', () 
   assert.equal(lines[2], 'Usage:  gauntlet <command> [flags]');
   assert.equal(lines[3], '');
   assert.equal(lines[4], 'Available commands:');
-  assert.equal(lines[5], '  plan');
+  assert.equal(lines[5], '  interview');
 });
 
 test('an error quotes what the user typed without letting it drive the terminal', () => {

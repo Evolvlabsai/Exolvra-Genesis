@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 — 2026-08-11
+
+- `gauntlet interview` in the CLI (npm package now 0.2.0): runs
+  `commands/interview.md` as a terminal conversation — each agent turn on the
+  clack rail with a live spinner between turns, each typed answer resuming
+  the same session, ending with the exact `gauntlet run` line (quoted and
+  `-C`-aware). TTY-only; no `--json`; writes neither `state.json` nor the
+  run ledger. Ctrl+C is stage-aware: before the first turn nothing exists
+  and it says so; after, "the files written so far are yours to keep."
+- The packaged CLI now ships all five plugin files — both command markdowns,
+  both agents, and `templates/progress.html` — and resolves
+  `${CLAUDE_PLUGIN_ROOT}` in loaded markdown to the plugin directory, so a
+  clean install uses the shipped progress template instead of the
+  generate-a-fallback path. This closes a plugin↔CLI drift introduced when
+  the template landed plugin-side.
+- Spec addendum v0.2 (R15, R16, widened C3) recorded in `cli/cli-spec.md`;
+  judged under a reduced-scope gauntlet: one blind scoped critic (LOSS,
+  seven findings), one batch fix, re-verified per finding to a WIN.
+
 ## 0.2.0 — 2026-08-11
 
 - The `gauntlet` CLI (`cli/`, npm package at its own 0.1.0): runs the loop

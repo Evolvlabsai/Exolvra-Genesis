@@ -238,6 +238,6 @@ test('G6: cli-spec.md is untouched', async () => {
   const spec = readFileSync(join(PACKAGE_ROOT, 'cli-spec.md'));
   assert.equal(
     createHash('sha256').update(spec).digest('hex'),
-    '39a73ad02c5dc692c9a993f6f0d4e4e4b134b37ca7b045334c6fb5735044d030',
+    '5cf4559861a5c7bd4b53795a2342eb849a35b0b9519253ab8c4cc3b1f4b138f8',
   );
 });

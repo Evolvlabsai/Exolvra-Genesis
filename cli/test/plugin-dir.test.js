@@ -96,7 +96,10 @@ test('the repo root resolves when running from source', () => {
 });
 
 test('a missing file under the override is a ConfigError naming the path', () => {
-  const dir = makePluginDir([PLUGIN_FILES.runMd, PLUGIN_FILES.builderMd]);
+  // Everything but one, so the message has exactly one file to name.
+  const dir = makePluginDir(
+    Object.values(PLUGIN_FILES).filter((file) => file !== PLUGIN_FILES.criticMd),
+  );
   const error = caught(() => loadPluginSources({ [PLUGIN_DIR_ENV]: dir }));
   assert.ok(error instanceof ConfigError);
   assert.match(error.message, /could not load the Gauntlet plugin markdown/);

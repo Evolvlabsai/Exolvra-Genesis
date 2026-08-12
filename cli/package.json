@@ -1,6 +1,6 @@
 {
   "name": "gauntlet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run a Gauntlet Loop from the terminal: builders iterate against blind critics until the work beats a captured bar twice in a row.",
   "license": "MIT",
   "type": "module",

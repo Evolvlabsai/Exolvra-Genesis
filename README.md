@@ -112,8 +112,12 @@ Not yet on npm; build it from the repo:
 cd cli && npm install && npm run build && npm link
 ```
 
-Four commands:
+Five commands:
 
+- `gauntlet interview [spec-or-idea]` — the interview, as a terminal
+  conversation: each question renders in the frame, your typed answer resumes
+  the session, and the handoff prints the exact `gauntlet run` line (with
+  `-C` when you ran it elsewhere). TTY-only, touches no run state.
 - `gauntlet run <goal-or-spec-path>` — the full loop. On a terminal with
   nothing else to go on it asks for the goal, the models, and auto vs review;
   answers persist as the next run's defaults (`--no-config` to ignore them).

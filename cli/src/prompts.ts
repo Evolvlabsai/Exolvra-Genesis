@@ -363,6 +363,116 @@ export async function askConfirm(
   }
 }
 
+/**
+ * Puts one open question inside the frame, and answers with what was typed.
+ *
+ * An empty answer is refused rather than accepted as silence: the caller is
+ * mid-conversation and has just asked something, and a blank turn handed back
+ * to the agent is a turn spent on nothing.
+ */
+export async function askText(
+  message: string,
+  io: PromptStreams,
+  options: {
+    placeholder?: string;
+    progress?: Progress;
+    closeWith?: string | false;
+  } = {},
+): Promise<string> {
+  options.progress?.suspend();
+  try {
+    const answer = await put(
+      text({
+        message,
+        ...(options.placeholder === undefined ? {} : { placeholder: options.placeholder }),
+        validate: (value: string | undefined) =>
+          (value ?? '').trim() === '' ? 'An answer is needed to carry on.' : undefined,
+        input: io.input,
+        output: io.output,
+      }),
+      io.output,
+      options.closeWith,
+    );
+    return answer.trim();
+  } finally {
+    options.progress?.resume();
+  }
+}
+
+/** Columns clack draws in front of every line it rails. */
+const RAIL_GUTTER = 3;
+
+/**
+ * Prose an agent wrote, laid out for the terminal it is being read on.
+ *
+ * Wrapped, because this is a conversation: what comes back is paragraphs
+ * written for a person, and a paragraph handed over as one long line is a
+ * paragraph the terminal folds itself — losing the rail on every row it folds,
+ * which is the one thing holding the frame together.
+ *
+ * Wrapped rather than cut, for the reason every other wrap here is: the agent
+ * shows whole files, and half a path or half a line of a spec is worse than a
+ * second row. A line's own indentation is kept and becomes the hanging indent
+ * of its continuations, so the indented block of a spec still reads as a block
+ * instead of unravelling into the prose around it. Blank lines are the author's
+ * paragraph breaks and survive as they are.
+ */
+export function wrapReport(report: string, columns: number): string[] {
+  const width = Math.max(20, columns - RAIL_GUTTER);
+  const out: string[] = [];
+
+  for (const line of report.replace(/\r\n?/g, '\n').split('\n')) {
+    const safe = printable(line).replace(/\s+$/, '');
+    if (safe.trim() === '') {
+      out.push('');
+      continue;
+    }
+    const body = safe.trimStart();
+    // Deep indentation is kept only while it still leaves a line to write on.
+    const indent = Math.min(safe.length - body.length, Math.max(0, width - 20));
+    out.push(...wrapText(body, width, indent, { breakWords: false }));
+  }
+
+  while (out.length > 0 && out[out.length - 1] === '') out.pop();
+  while (out.length > 0 && out[0] === '') out.shift();
+  return out;
+}
+
+/**
+ * Draws what an agent wrote on the rail, or draws nothing when it wrote
+ * nothing.
+ *
+ * The second half matters as much as the first: a turn whose whole content was
+ * a marker line addressed to this CLI has nothing in it for the reader, and an
+ * empty railed block is two rows of punctuation reporting that nothing
+ * happened.
+ */
+export function logReport(
+  report: string,
+  io: PromptStreams,
+  options: { wrap?: boolean } = {},
+): void {
+  /*
+   * `wrap: false` is for the one thing that must survive a copy: a command.
+   *
+   * A line folded here is folded *inside the frame*, so the rail is drawn down
+   * the middle of it — and a command copied off two railed rows arrives with a
+   * `│` in it and does not run. Left long, the terminal soft-wraps it, which
+   * costs a ragged row and keeps the line one line to anything selecting it.
+   * The prompt library does the same with its own long lines.
+   */
+  const columns = (io.output as Partial<NodeJS.WriteStream>).columns;
+  const lines =
+    options.wrap === false
+      ? report
+          .replace(/\r\n?/g, '\n')
+          .split('\n')
+          .map((line) => printable(line).replace(/\s+$/, ''))
+      : wrapReport(report, typeof columns === 'number' && columns > 0 ? columns : 80);
+  if (lines.length === 0 || lines.every((line) => line === '')) return;
+  log.message(lines.join('\n'), { output: io.output });
+}
+
 /** One row of a picker: the value, what it reads as, and the detail under it. */
 export interface Choice {
   value: string;

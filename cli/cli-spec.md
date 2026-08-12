@@ -70,3 +70,23 @@ CLI is transport and ergonomics only.
 - The interactive UX of `@clack/prompts` example CLIs — perceivable: run
   them and screenshot terminal output side by side.
 - `gh` CLI help and output structure, as the bar for R14.
+
+## Addendum v0.2 — interview
+
+- C3 (widened). The CLI loads every plugin file it uses from the installed
+  package — `commands/run.md`, `commands/interview.md`, `agents/builder.md`,
+  `agents/critic.md`, `templates/progress.html` — never reimplementing or
+  restating any of them. `${CLAUDE_PLUGIN_ROOT}` inside the markdown resolves
+  to the directory the CLI loaded the plugin from, so the template copy in
+  `run.md` works identically under the plugin and the CLI.
+- R15. `gauntlet interview [spec-path-or-idea]` runs `commands/interview.md`
+  as a conversation: each agent turn renders in the terminal, the user's
+  typed answer resumes the same session, repeating until the markdown's
+  handoff. It is TTY-only (exit 2 with a plain reason otherwise), has no
+  `--json`, and touches neither `state.json` nor the run ledger — an
+  interview is not a run. On handoff the CLI prints the exact
+  `gauntlet run specs/<slug>.md` line (the CLI-native translation of the
+  markdown's `/gauntlet:run` handoff).
+- R16. The packaged CLI ships every file in the widened C3 list; from a clean
+  tarball install, `run` uses the shipped progress template rather than the
+  generate-a-fallback path, and `interview` works end to end.

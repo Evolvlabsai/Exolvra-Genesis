@@ -37,6 +37,14 @@ export interface SessionOptions {
   models: ModelChoice;
   cwd: string;
   hooks?: SessionHooks;
+  /**
+   * Whether the session may spawn the builder and critic subagents.
+   *
+   * False for a conversation: an interview has one agent, which writes both
+   * files itself, and offering it two roles it is never meant to delegate to is
+   * offering it a way to do the wrong thing.
+   */
+  subagents?: boolean;
   maxTurns?: number;
   /**
    * A ceiling the provider itself enforces, in US dollars.
@@ -173,7 +181,9 @@ export function createSession(opts: SessionOptions): Session {
   const buildOptions = (resumeId?: string): Options => {
     const options: Options = {
       cwd: opts.cwd,
-      agents: buildAgentDefinitions(opts.sources, opts.models),
+      ...(opts.subagents === false
+        ? {}
+        : { agents: buildAgentDefinitions(opts.sources, opts.models) }),
       systemPrompt: { type: 'preset', preset: 'claude_code' },
       settingSources: ['project'],
       permissionMode: opts.permissionMode ?? 'acceptEdits',
