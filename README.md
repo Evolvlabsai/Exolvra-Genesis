@@ -21,6 +21,8 @@ the assembled work wins that comparison twice in a row.
    screenshots of the product you're chasing, a benchmark figure, a reference
    document. Captured locally into `.exolvra-genesis/bar/`, immutable for the run.
    User constraints become hard gates checked before every comparison.
+   A visual bar needs a browser or screenshot tool available to critics —
+   without one they report BLOCKED rather than judging pixels from source.
 2. **Decompose.** The lead splits the goal into the smallest independently
    judgeable pieces and writes a Task Spec for each, then shows you the bar
    and the piece list and waits for "go" (or runs straight through in `auto`

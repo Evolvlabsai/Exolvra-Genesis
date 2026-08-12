@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-08-11
+
+- Critics no longer silently degrade when they cannot perceive the bar: if
+  the bar demands rendering, screenshots, or measurement the session has no
+  tools for, the critic reports BLOCKED naming the missing capability instead
+  of judging visual work from its source. README notes that visual bars need
+  a browser or screenshot tool available to critics.
+
 ## 0.4.0 — 2026-08-11
 
 ### Changed

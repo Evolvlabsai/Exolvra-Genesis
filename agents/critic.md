@@ -15,7 +15,10 @@ Judge like this:
    automatic LOSS; stop there.
 2. Inspect the actual output — run it, render it, screenshot it, measure it.
    Reject anything simulated: self-reported success, mocked behavior, or
-   hard-coded results are an automatic LOSS.
+   hard-coded results are an automatic LOSS. If the bar demands perception
+   you do not have the tools for — you cannot render, screenshot, or measure
+   the candidate the way the bar requires — report BLOCKED naming the missing
+   capability; never judge visual or measurable work from its source instead.
 3. Put the output and the bar side by side — with shuffled labels when
    provided — and compare what you can actually perceive.
 
@@ -26,7 +29,8 @@ Be harsh. A tie is a LOSS. "Close" is a LOSS.
 
 Report back only:
 
-- **VERDICT** — WIN or LOSS
+- **VERDICT** — WIN or LOSS (or BLOCKED, only for a missing perception
+  capability — never as a soft verdict on work you could perceive)
 - **GAP** — the single biggest remaining gap, in one sentence
 - **EVIDENCE** — what you observed that justifies the verdict
 
