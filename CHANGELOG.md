@@ -9,7 +9,7 @@
   - Plugin, marketplace entry and slash commands: `/exolvra-genesis:run` and
     `/exolvra-genesis:interview`. Install with
     `/plugin install exolvra-genesis@exolvra-genesis`.
-  - CLI package and bin: `exolvra-genesis` (published as 0.3.0).
+  - CLI package and bin: `exolvra-genesis`, aligned to the repo version — from 0.4.0 on, the plugin manifests, the changelog, and the npm package carry one version, moved together.
   - Run state moved to `.exolvra-genesis/` — `runs.json`, `state.json`,
     `bar/`, `runs/` and `progress.html`. The Stop hook greps the new path;
     state written under the old directory is not read or migrated.

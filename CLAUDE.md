@@ -40,7 +40,7 @@ Run state lives under `.exolvra-genesis/` in the *target* project (gitignored he
 Supporting files:
 
 - `hooks/verification-gate.example.json` — opt-in Stop hook that blocks session end while `state.json` says `running`. Users copy its `hooks` block into their settings; nothing in the plugin depends on it. Its grep patterns must match exactly how `run.md` writes `state.json`.
-- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — manifests. The version appears in both plus `CHANGELOG.md`; bump all three together. Repo URLs point at `Evolvlabsai/Exolvra-Genesis` (manifests, README quickstart, and `MANUAL_URL` in `cli/src/usage.ts`).
+- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — manifests. The version appears in both, plus `CHANGELOG.md` and `cli/package.json` — one version, all four bumped together. Repo URLs point at `Evolvlabsai/Exolvra-Genesis` (manifests, README quickstart, and `MANUAL_URL` in `cli/src/usage.ts`).
 - `cli/cli-spec.md` — spec for a future `exolvra-genesis` CLI (not yet implemented). Its hard constraint C3 is the key invariant: the CLI loads `commands/run.md` and the agent files rather than reimplementing the loop — the Markdown stays the single source of truth. Other gates: TypeScript strict / Node >= 18, runtime deps limited to `@anthropic-ai/claude-agent-sdk` plus at most one prompt library, exit codes 0 = win / 1 = loss, blocked, or budget-stopped / 2 = usage error.
 
 ## Design invariants
