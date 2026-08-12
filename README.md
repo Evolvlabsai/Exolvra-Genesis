@@ -1,5 +1,8 @@
 # Exolvra Genesis
 
+[![ci](https://github.com/Evolvlabsai/Exolvra-Genesis/actions/workflows/ci.yml/badge.svg)](https://github.com/Evolvlabsai/Exolvra-Genesis/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 *A minimal orchestration loop for Claude Code: builders vs. blind critics,
 against a concrete quality bar, until the work actually wins. A small,
 self-contained excerpt of [Exolvra OS](https://exolvra.ai).*
