@@ -367,13 +367,31 @@ test('a value that is a list is joined rather than printed as [object Object]', 
 });
 
 test('an instruction to reply is dropped, because the preview has already ended', () => {
-  for (const { name, text } of CAPTURED) {
-    assert.match(text, /Reply \*\*"go"\*\*/, name + ' carried no closing invitation');
-    const kept = dropUnactionable(text);
-    assert.ok(!/Reply\s+\*?\*?"go"/.test(kept), name + ' kept an instruction to reply');
-    // Only the closing invitation goes; the preview itself stays.
-    assert.ok(kept.includes('Bar'), name + ' lost its content');
-    assert.ok(kept.length > text.length - 60, name + ' dropped more than the invitation');
+  /*
+   * Each captured answer twice: as written, and with the line endings a
+   * provider is equally free to send.
+   *
+   * Which one arrives is not this CLI's to choose, and a reader that only knows
+   * LF sees a CRLF answer as one unbroken block — no blank line separates a
+   * paragraph from the next, so nothing is ever recognised as the closing line
+   * and the invitation is printed to somebody who has already exited. The
+   * fixtures are checked-out text files, so on a runner that normalises to CRLF
+   * this is not a hypothetical either.
+   */
+  for (const { name, text: written } of CAPTURED) {
+    for (const [ending, text] of [
+      ['LF', written.replace(/\r\n?/g, '\n')],
+      ['CRLF', written.replace(/\r\n?/g, '\n').replace(/\n/g, '\r\n')],
+      ['CR', written.replace(/\r\n?/g, '\n').replace(/\n/g, '\r')],
+    ]) {
+      const what = name + ' (' + ending + ')';
+      assert.match(text, /Reply \*\*"go"\*\*/, what + ' carried no closing invitation');
+      const kept = dropUnactionable(text);
+      assert.ok(!/Reply\s+\*?\*?"go"/.test(kept), what + ' kept an instruction to reply');
+      // Only the closing invitation goes; the preview itself stays.
+      assert.ok(kept.includes('Bar'), what + ' lost its content');
+      assert.ok(kept.length > text.length - 80, what + ' dropped more than the invitation');
+    }
   }
 });
 

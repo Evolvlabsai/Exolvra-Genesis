@@ -23,7 +23,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, posix as posixPath, win32 as winPath } from 'node:path';
 
 import { ConfigError } from './exit.js';
 import {
@@ -124,24 +124,52 @@ function isNotFound(error: unknown): boolean {
 export function configDir(where: ConfigLocation = {}): string {
   const env = where.env ?? process.env;
   const platform = where.platform ?? process.platform;
-  const home = env['HOME'] || env['USERPROFILE'] || homedir();
+
+  /*
+   * Paths are joined and tested by the rules of the platform being asked
+   * about, not of the one this process happens to be running on.
+   *
+   * `node:path`'s own exports follow the running platform, so asking about
+   * Windows from Linux read `C:\Users\ada\AppData\Roaming` as a relative path —
+   * it has no leading slash — and the answer fell through to a home directory
+   * joined with `AppData/Roaming` under Linux separators. That is not a
+   * location on either operating system.
+   */
+  const paths = platform === 'win32' ? winPath : posixPath;
+
+  /*
+   * A caller that supplies the environment supplies all of it.
+   *
+   * Reaching past an injected environment to this machine's real home is how
+   * one OS's home ends up carrying another OS's convention. Left unset, the
+   * answer is whatever an environment with no home says it is, which is at
+   * least an answer about the environment that was handed over. The ordinary
+   * call passes no environment at all and still gets the real one.
+   */
+  const home =
+    env['HOME'] || env['USERPROFILE'] || (where.env === undefined ? homedir() : '');
 
   if (platform === 'win32') {
     const appData = env['APPDATA'];
-    const base = appData && isAbsolute(appData) ? appData : join(home, 'AppData', 'Roaming');
-    return join(base, CONFIG_DIR_NAME);
+    const base =
+      appData && paths.isAbsolute(appData)
+        ? appData
+        : paths.join(home, 'AppData', 'Roaming');
+    return paths.join(base, CONFIG_DIR_NAME);
   }
   if (platform === 'darwin') {
-    return join(home, 'Library', 'Application Support', CONFIG_DIR_NAME);
+    return paths.join(home, 'Library', 'Application Support', CONFIG_DIR_NAME);
   }
   const xdg = env['XDG_CONFIG_HOME'];
-  const base = xdg && isAbsolute(xdg) ? xdg : join(home, '.config');
-  return join(base, CONFIG_DIR_NAME);
+  const base = xdg && paths.isAbsolute(xdg) ? xdg : paths.join(home, '.config');
+  return paths.join(base, CONFIG_DIR_NAME);
 }
 
 /** The config file itself. Printing this is how a user finds what to edit or delete. */
 export function configPath(where: ConfigLocation = {}): string {
-  return join(configDir(where), CONFIG_FILE_NAME);
+  // Joined by the rules of the platform being asked about, like the directory.
+  const paths = (where.platform ?? process.platform) === 'win32' ? winPath : posixPath;
+  return paths.join(configDir(where), CONFIG_FILE_NAME);
 }
 
 /**

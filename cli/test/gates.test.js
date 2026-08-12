@@ -235,9 +235,20 @@ test('C5: real processes return 0 for a win, 1 for a loss, 2 for a bad invocatio
 
 test('G6: cli-spec.md is untouched', async () => {
   const { createHash } = await import('node:crypto');
-  const spec = readFileSync(join(PACKAGE_ROOT, 'cli-spec.md'));
+  // Hashed over the content, not over the line endings.
+  //
+  // `.gitattributes` says `* text=auto`, so a checkout normalises them: a Linux
+  // runner gets LF and a Windows runner gets CRLF for the very same commit. A
+  // hash of the raw bytes therefore says the spec was edited every time it is
+  // checked out on the other operating system, which is the one thing this gate
+  // must never say by accident. The pin is the LF hash, and every checkout is
+  // read back to it.
+  const spec = readFileSync(join(PACKAGE_ROOT, 'cli-spec.md'), 'utf8').replace(
+    /\r\n?/g,
+    '\n',
+  );
   assert.equal(
-    createHash('sha256').update(spec).digest('hex'),
+    createHash('sha256').update(spec, 'utf8').digest('hex'),
     '595276af32362726f16f24a538eb53511ad4bfe04b77bab483deb637eca15bdc',
   );
 });

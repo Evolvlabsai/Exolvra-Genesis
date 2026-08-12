@@ -484,9 +484,22 @@ function candidates(lines: readonly string[]): Candidate[] {
   return bare === undefined ? [] : [bare];
 }
 
+/**
+ * Line endings, as one kind.
+ *
+ * What an agent sends is not this CLI's to choose: the provider may deliver
+ * CRLF, and a reader that only knows LF sees a file with no line breaks in the
+ * places it counts them. Every function here that splits on lines or on blank
+ * lines goes through this first, so a report reads the same whichever the agent
+ * happened to write.
+ */
+export function normalizeEol(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 /** Removes every block that was read for a plan, so no raw JSON is ever shown. */
 export function withoutPlanBlocks(text: string): string {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const lines = normalizeEol(text).split('\n');
   const drop = new Set<number>();
   for (const candidate of candidates(lines)) {
     for (let i = candidate.from; i <= candidate.to; i += 1) drop.add(i);
@@ -895,7 +908,7 @@ function repairsFor(candidate: Candidate): string[] {
  * real one.
  */
 export function readPlan(answer: string): PlanReading {
-  const text = answer.replace(/\r\n?/g, '\n');
+  const text = normalizeEol(answer);
   const rest = withoutPlanBlocks(text);
   const found = candidates(text.split('\n'));
 
@@ -981,7 +994,13 @@ const INSTRUCTION_LIMIT = 120;
 
 /** Drops trailing content a reader of a finished preview could not act on. */
 export function dropUnactionable(text: string): string {
-  const blocks = text.trim().split(/\n{2,}/);
+  // Line endings are normalised first, because paragraphs are what this splits
+  // on and a CRLF answer has none by that reckoning: `\r\n\r\n` holds no two
+  // consecutive newlines, so the whole answer arrives as a single block and
+  // nothing is ever recognised as the closing line. What an agent sends is not
+  // this CLI's to choose — the provider may deliver either — so every function
+  // here that reasons about lines reads both the same way.
+  const blocks = normalizeEol(text).trim().split(/\n{2,}/);
   while (blocks.length > 0) {
     const last = plainProse(blocks[blocks.length - 1] as string);
     if (last.length > INSTRUCTION_LIMIT || !REPLY_INSTRUCTION.test(last)) break;

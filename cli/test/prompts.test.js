@@ -249,31 +249,77 @@ test('Ctrl+C at a prompt closes the frame and leaves no config behind', async (t
 // ---------------------------------------------------------------------------
 
 test('the config lives where each OS keeps user config', () => {
+  /*
+   * Every case injects the whole environment and states the answer literally.
+   *
+   * Both halves matter. Joining the expected path with `node:path` would build
+   * it by the rules of whichever machine is running the test, so a Windows box
+   * would demand backslashes in a macOS path and agree with an answer that is
+   * wrong everywhere. And an environment injected with holes in it lets the
+   * real one show through: this is what put a Linux home under an `AppData`
+   * suffix on CI, a location that exists on neither system.
+   */
   assert.equal(
     configPath({ platform: 'win32', env: { APPDATA: 'C:\\Users\\ada\\AppData\\Roaming' } }),
-    join('C:\\Users\\ada\\AppData\\Roaming', 'exolvra-genesis', 'config.json'),
+    'C:\\Users\\ada\\AppData\\Roaming\\exolvra-genesis\\config.json',
+  );
+  // No APPDATA: the convention's own default, under the injected home.
+  assert.equal(
+    configPath({ platform: 'win32', env: { USERPROFILE: 'C:\\Users\\ada' } }),
+    'C:\\Users\\ada\\AppData\\Roaming\\exolvra-genesis\\config.json',
   );
   assert.equal(
     configPath({ platform: 'darwin', env: { HOME: '/Users/ada' } }),
-    join('/Users/ada', 'Library', 'Application Support', 'exolvra-genesis', 'config.json'),
+    '/Users/ada/Library/Application Support/exolvra-genesis/config.json',
   );
   assert.equal(
     configPath({ platform: 'linux', env: { HOME: '/home/ada' } }),
-    join('/home/ada', '.config', 'exolvra-genesis', 'config.json'),
+    '/home/ada/.config/exolvra-genesis/config.json',
   );
   assert.equal(
     configPath({ platform: 'linux', env: { HOME: '/home/ada', XDG_CONFIG_HOME: '/xdg' } }),
-    join('/xdg', 'exolvra-genesis', 'config.json'),
+    '/xdg/exolvra-genesis/config.json',
   );
   // A relative XDG_CONFIG_HOME is not a location; the convention says ignore it.
   assert.equal(
     configPath({ platform: 'linux', env: { HOME: '/home/ada', XDG_CONFIG_HOME: 'relative' } }),
-    join('/home/ada', '.config', 'exolvra-genesis', 'config.json'),
+    '/home/ada/.config/exolvra-genesis/config.json',
   );
   assert.equal(
     configDir({ platform: 'linux', env: { HOME: '/home/ada' } }),
-    join('/home/ada', '.config', 'exolvra-genesis'),
+    '/home/ada/.config/exolvra-genesis',
   );
+
+  // The answer is the same wherever it is asked from: nothing here reads the
+  // machine running the test, so every case above holds on every runner.
+  for (const platform of ['win32', 'darwin', 'linux']) {
+    const answer = configDir({ platform, env: { HOME: '/home/ada', APPDATA: 'C:\\ada' } });
+    assert.equal(
+      answer.includes('AppData\\Roaming') || !answer.includes('AppData'),
+      true,
+      platform + ' mixed one convention into another: ' + answer,
+    );
+  }
+});
+
+test('a real environment lands where that OS keeps config, and nowhere else', () => {
+  // The bug this pins: on Linux the answer must be XDG or ~/.config, never a
+  // path with a Windows suffix bolted onto a Linux home.
+  const linux = configDir({ platform: 'linux', env: { HOME: '/home/runner' } });
+  assert.equal(linux, '/home/runner/.config/exolvra-genesis');
+  assert.equal(linux.includes('AppData'), false, linux);
+  assert.equal(linux.includes('\\'), false, 'a Linux path carried a backslash: ' + linux);
+
+  const mac = configDir({ platform: 'darwin', env: { HOME: '/Users/runner' } });
+  assert.equal(mac.includes('AppData'), false, mac);
+  assert.equal(mac.includes('\\'), false, 'a macOS path carried a backslash: ' + mac);
+
+  const windows = configDir({
+    platform: 'win32',
+    env: { APPDATA: 'C:\\Users\\runner\\AppData\\Roaming' },
+  });
+  assert.equal(windows, 'C:\\Users\\runner\\AppData\\Roaming\\exolvra-genesis');
+  assert.equal(windows.includes('/'), false, 'a Windows path carried a forward slash: ' + windows);
 });
 
 // ---------------------------------------------------------------------------
