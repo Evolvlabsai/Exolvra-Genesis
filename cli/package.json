@@ -29,5 +29,28 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
-  }
+  },
+  "author": {
+    "name": "EvolvLabs, LLC",
+    "url": "https://exolvra.ai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Evolvlabsai/Exolvra-Genesis.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/Evolvlabsai/Exolvra-Genesis#readme",
+  "bugs": {
+    "url": "https://github.com/Evolvlabsai/Exolvra-Genesis/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai-agents",
+    "multi-agent",
+    "orchestration",
+    "code-quality",
+    "quality-bar",
+    "cli"
+  ]
 }
