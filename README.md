@@ -218,6 +218,13 @@ of **Exolvra OS**, distilled. The interview, the spec, a mockup you approve
 by using it, and a build loop that only ends when the work beats a bar nobody
 graded on trust.
 
+![Genesis Studio inside Exolvra OS: the phase rail from idea to readiness, the interview panel, and the unknowns register for one application](docs/exolvra-os-genesis-studio.png)
+
+*Genesis Studio in Exolvra OS: the same interview and the same bar
+discipline this repo excerpts, inside the full platform. Every phase is
+walked, every unknown sits in a register, and readiness is computed, not
+felt.*
+
 [Exolvra OS](https://exolvra.ai) applies the same discipline to the whole
 life of an application. Specs are approved at doors and recorded immutably,
 human decisions are enforced by the platform instead of promised by a prompt,
