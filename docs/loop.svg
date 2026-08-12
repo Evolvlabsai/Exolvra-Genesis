@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 560" font-family="ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace">
+  <title>The Exolvra Genesis loop: a spec or goal reaches the orchestrator, which pins the bar and decomposes the work into task specs; builders implement slices; the lead re-runs their verification; a fresh blind critic compares the real output against the bar; a LOSS sends the biggest gap back to a builder, and two consecutive WINs complete the run.</title>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#97968f"/>
+    </marker>
+    <marker id="aw" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#4bbd85"/>
+    </marker>
+    <marker id="al" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#ef6a4f"/>
+    </marker>
+  </defs>
+
+  <rect width="1560" height="560" fill="#131318"/>
+
+  <!-- ===== top row: the bar, complete ===== -->
+  <rect x="1026" y="64" width="220" height="70" rx="10" fill="#1d1d22" stroke="#e0a24a" stroke-width="1.5"/>
+  <text x="1136" y="94" text-anchor="middle" font-size="16" font-weight="600" fill="#e9e8e4">the bar</text>
+  <text x="1136" y="115" text-anchor="middle" font-size="10.5" fill="#97968f">artifact or number · sha256-pinned</text>
+
+  <rect x="1286" y="64" width="170" height="70" rx="10" fill="#1d1d22" stroke="#4bbd85" stroke-width="1.5"/>
+  <text x="1371" y="94" text-anchor="middle" font-size="16" font-weight="600" fill="#4bbd85">complete</text>
+  <text x="1371" y="115" text-anchor="middle" font-size="10.5" fill="#97968f">the work actually won</text>
+
+  <!-- capture path: lead up to the bar -->
+  <path d="M371,254 V96 H1018" fill="none" stroke="#97968f" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#a)"/>
+  <text x="700" y="86" text-anchor="middle" font-size="11" fill="#97968f">captured at the start · immutable for the run</text>
+
+  <!-- bar down to critic -->
+  <path d="M1136,134 V246" fill="none" stroke="#97968f" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#a)"/>
+  <text x="1148" y="180" font-size="11" fill="#97968f">side by side,</text>
+  <text x="1148" y="196" font-size="11" fill="#97968f">labels shuffled</text>
+
+  <!-- win path: verdict up to complete -->
+  <path d="M1371,254 V142" fill="none" stroke="#4bbd85" stroke-width="2" marker-end="url(#aw)"/>
+  <text x="1383" y="180" font-size="11.5" fill="#4bbd85">WIN twice</text>
+  <text x="1383" y="196" font-size="11.5" fill="#4bbd85">in a row</text>
+
+  <!-- ===== main row ===== -->
+  <rect x="36" y="254" width="170" height="72" rx="10" fill="#1d1d22" stroke="#2e2e35" stroke-width="1.5"/>
+  <text x="121" y="285" text-anchor="middle" font-size="16" font-weight="600" fill="#e9e8e4">spec / goal</text>
+  <text x="121" y="307" text-anchor="middle" font-size="10.5" fill="#97968f">or built by /interview</text>
+
+  <rect x="266" y="254" width="210" height="72" rx="10" fill="#1d1d22" stroke="#2e2e35" stroke-width="1.5"/>
+  <text x="371" y="285" text-anchor="middle" font-size="16" font-weight="600" fill="#e9e8e4">orchestrator</text>
+  <text x="371" y="307" text-anchor="middle" font-size="10.5" fill="#97968f">the lead · never writes code</text>
+
+  <rect x="536" y="254" width="190" height="72" rx="10" fill="#1d1d22" stroke="#2e2e35" stroke-width="1.5"/>
+  <text x="631" y="285" text-anchor="middle" font-size="16" font-weight="600" fill="#e9e8e4">task specs</text>
+  <text x="631" y="307" text-anchor="middle" font-size="10.5" fill="#97968f">smallest judgeable slices</text>
+
+  <rect x="786" y="254" width="180" height="72" rx="10" fill="#1d1d22" stroke="#2e2e35" stroke-width="1.5"/>
+  <text x="876" y="285" text-anchor="middle" font-size="16" font-weight="600" fill="#e9e8e4">builder</text>
+  <text x="876" y="307" text-anchor="middle" font-size="10.5" fill="#97968f">one slice, end to end</text>
+
+  <rect x="1046" y="254" width="180" height="72" rx="10" fill="#1d1d22" stroke="#2e2e35" stroke-width="1.5"/>
+  <text x="1136" y="285" text-anchor="middle" font-size="16" font-weight="600" fill="#e9e8e4">critic</text>
+  <text x="1136" y="307" text-anchor="middle" font-size="10.5" fill="#97968f">fresh context · blind</text>
+
+  <rect x="1286" y="254" width="170" height="72" rx="10" fill="#1d1d22" stroke="#2e2e35" stroke-width="1.5"/>
+  <text x="1345" y="285" text-anchor="end" font-size="16" font-weight="600" fill="#4bbd85">WIN</text>
+  <text x="1354" y="285" font-size="16" fill="#97968f">/</text>
+  <text x="1368" y="285" font-size="16" font-weight="600" fill="#ef6a4f">LOSS</text>
+  <text x="1371" y="307" text-anchor="middle" font-size="10.5" fill="#97968f">a tie is a LOSS</text>
+
+  <!-- main row arrows -->
+  <path d="M206,290 H258" fill="none" stroke="#97968f" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M476,290 H528" fill="none" stroke="#97968f" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M726,290 H778" fill="none" stroke="#97968f" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M966,290 H1038" fill="none" stroke="#97968f" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="1002" y="270" text-anchor="middle" font-size="11" fill="#97968f">report is</text>
+  <text x="1002" y="284" text-anchor="middle" font-size="11" fill="#97968f">a claim</text>
+  <path d="M1226,290 H1278" fill="none" stroke="#97968f" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- verification note under the builder-critic seam -->
+  <text x="1002" y="352" text-anchor="middle" font-size="10.5" fill="#e0a24a">lead re-runs the</text>
+  <text x="1002" y="366" text-anchor="middle" font-size="10.5" fill="#e0a24a">verification itself</text>
+
+  <!-- ===== loss loop ===== -->
+  <path d="M1371,326 V446 H886 V334" fill="none" stroke="#ef6a4f" stroke-width="2" marker-end="url(#al)"/>
+  <text x="1128" y="436" text-anchor="middle" font-size="12" fill="#ef6a4f">LOSS: the single biggest gap goes back · a fresh critic every round</text>
+
+  <!-- footer note -->
+  <text x="36" y="520" font-size="11" fill="#97968f">Every few rounds the assembled whole runs the loop, not just the slices. A gap that survives two rounds forces a change of approach.</text>
+</svg>

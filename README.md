@@ -24,6 +24,8 @@ not before.
 
 ## How it works
 
+![The loop: a spec or goal reaches the orchestrator, which pins the bar and decomposes the work into task specs; builders implement slices; the lead re-runs their verification; a fresh blind critic compares the real output against the bar; a LOSS sends the biggest gap back to a builder, and two consecutive WINs complete the run](docs/loop.svg)
+
 1. **Pick the bar.** An artifact or a number, never an adjective: real
    screenshots of the product you're chasing, a benchmark figure, a reference
    document. The bar is captured into `.exolvra-genesis/bar/` and stays frozen
