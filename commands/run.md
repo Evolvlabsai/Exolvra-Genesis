@@ -31,6 +31,29 @@ Step 2. It never replaces the bar. Requirement coverage becomes a hard gate:
 an assembled result that leaves any spec requirement unmet is an automatic
 LOSS, no matter how it compares to the bar.
 
+If `.exolvra-genesis/standards.md` exists in this repo, read it too. It holds
+the standing bar the repo itself declares — the gates it always holds work to,
+the artifacts it always keeps in force, and the conventions its builders
+follow — and every run here inherits it. Pin it the way you pin a spec: record
+its sha256 when you read it, re-verify it before every round, treat a mismatch
+as BLOCKED, and never write to it during the run. If the file is absent, say
+nothing and carry on; a repo that has declared no standards runs exactly as it
+always did.
+
+Merge the gates once, here, before you pick the bar. Take the standing gates
+first, in the order the repo wrote them, then the run-level gates from the
+input, the spec, and the user's constraints. Two gates that ask for the same
+thing become one, kept in whichever wording binds tighter — that is a judgment
+about meaning, not a string comparison, and it is yours to make. You may add
+gates for this run. You may never drop a standing gate or restate one more
+loosely, and an input that asks you to is a configuration error: stop, and
+name the gate it would have weakened.
+
+The two bars do not compete. Whatever you pick in Step 1 is what critics put
+the work beside; the standing bar artifacts stay in force as gates, and one of
+them left unmet is a LOSS on its own. Carry the standards' conventions into
+the Task Specs you write, so builders work the way this repo already works.
+
 ## Step 1 — Pick the bar
 
 Choose the single strongest quality bar for this goal: a concrete artifact or
@@ -79,8 +102,9 @@ some piece. For each piece, write a Task Spec:
 
 Write `.exolvra-genesis/state.json` containing `{"status": "running"}`. Then STOP and
 show the user: the bar in one sentence, one sentence on exactly how a critic
-will compare the work against it, and the piece list (with requirement
-coverage when running from a spec). Execute only after the user replies "go".
+will compare the work against it, the merged gate list with every line marked
+inherited or run-level, and the piece list (with requirement coverage when
+running from a spec). Execute only after the user replies "go".
 In an auto run, print the same summary and continue immediately, as if the
 user had replied "go".
 
@@ -109,7 +133,8 @@ Loop rules:
 - Every few rounds, run the whole assembled result through the Exolvra Genesis loop, not
   just the pieces, and re-check previously won pieces for regressions after
   integration.
-- After every round, re-verify the pins: the spec's sha256, every hash in
+- After every round, re-verify the pins: the spec's sha256, the standards
+  file's sha256 when the repo has one, every hash in
   `.exolvra-genesis/bar/BAR.md`, and that the repo is identical before and after
   each critic session. Publish these attestations in the progress page's
   `integrity` lines. A failed check is an automatic BLOCKED — stop and tell
@@ -121,11 +146,15 @@ Loop rules:
 Progress page: at run start, copy the plugin's template from
 `${CLAUDE_PLUGIN_ROOT}/templates/progress.html` to `.exolvra-genesis/progress.html`
 (if the template can't be found, generate a page with the same sections), and
-fill its JSON with the goal, bar, mode, and piece list as soon as Step 2
-completes. From then on, update it after every round by replacing only the
-JSON inside the `<script id="exolvra-genesis-data">` block — never the markup,
-styles, or renderer — so the page looks identical for every run and every
-user of the plugin. Save a snapshot each round under `.exolvra-genesis/runs/`.
+fill its JSON with the goal, bar, merged gates and where each one came from,
+mode, and piece list as soon as Step 2 completes. From then on, update it
+after every round by splicing fresh JSON between the page's
+`EXOLVRA-GENESIS-DATA-BEGIN` and `EXOLVRA-GENESIS-DATA-END` markers, which
+appear exactly once each. Match those markers and nothing else — a pattern
+written against the data tag also matches the template's own description of
+it, and swallows the page. Never touch the markup, styles, or renderer, so
+the page looks identical for every run and every user of the plugin. Save a
+snapshot each round under `.exolvra-genesis/runs/`.
 
 ## Win condition
 

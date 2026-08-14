@@ -1,5 +1,7 @@
 # Exolvra Genesis run artifacts (bar captures, snapshots, progress page, state)
-.exolvra-genesis/
+/.exolvra-genesis/*
+!/.exolvra-genesis/standards.md
+!/.exolvra-genesis/goals/
 
 # Run state written under the previous name, which existing checkouts still have
 .gauntlet/

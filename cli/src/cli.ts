@@ -20,7 +20,6 @@ import {
   type Viewport,
   findHelpTopic,
   printable,
-  renderCommandHelp,
   renderHelpTopic,
   renderInternalError,
   renderRootHelp,
@@ -40,7 +39,7 @@ function renderVersion(): string {
 }
 
 /** `exolvra-genesis help [<command> | <topic>]`. */
-function runHelp(rest: readonly string[], ctx: Ctx): ExitCode {
+async function runHelp(rest: readonly string[], ctx: Ctx): Promise<ExitCode> {
   const name = rest[0];
   if (name === undefined) {
     ctx.stdout.write(renderRootHelp());
@@ -49,8 +48,25 @@ function runHelp(rest: readonly string[], ctx: Ctx): ExitCode {
 
   const command = findCommand(name);
   if (command !== undefined) {
-    ctx.stdout.write(renderCommandHelp(command));
-    return EXIT.WIN;
+    /*
+     * The command prints its own page, rather than this path printing one for
+     * it.
+     *
+     * `help x` and `x --help` are the same request, and they have to be the
+     * same page — a reader who is shown two different pages for one command
+     * has been told, by the CLI itself, that one of them is incomplete. A
+     * command that lays its own page out is the case this exists for: a group
+     * with subcommands has a section no generic renderer knows to draw, and
+     * routing both spellings through the command is what makes the two agree
+     * by construction rather than by two renderers being kept in step.
+     *
+     * Whatever followed the command name goes with it, so `help standards
+     * check` asks the group for the leaf's page exactly as `standards check
+     * --help` does. Dropping those tokens answered a question nobody asked and
+     * called it the answer; handing them over also means a subcommand that
+     * does not exist is refused here as it is refused there.
+     */
+    return settle(await command.run([...rest.slice(1), '--help'], ctx));
   }
 
   const topic = findHelpTopic(name);
@@ -67,6 +83,19 @@ function runHelp(rest: readonly string[], ctx: Ctx): ExitCode {
     'unknown help topic "' + name + '" for "' + PROGRAM + '": expected one of ' + known,
     PROGRAM + ' help <command | topic>',
   );
+}
+
+/**
+ * A command's answer as one of the three codes this CLI has.
+ *
+ * A command returns a number; the contract says three of them exist. Anything
+ * else is a fault in this CLI rather than a verdict, and it lands on the code
+ * for a run that did not finish.
+ */
+function settle(code: number): ExitCode {
+  return code === EXIT.WIN || code === EXIT.LOSS || code === EXIT.USAGE
+    ? code
+    : EXIT.LOSS;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -191,10 +220,7 @@ async function dispatch(
     return EXIT.USAGE;
   }
 
-  const code = await command.run([...rest], ctx);
-  return code === EXIT.WIN || code === EXIT.LOSS || code === EXIT.USAGE
-    ? code
-    : EXIT.LOSS;
+  return settle(await command.run([...rest], ctx));
 }
 
 export async function main(argv: readonly string[], ctx: Ctx): Promise<ExitCode> {

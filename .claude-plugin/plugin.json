@@ -1,6 +1,6 @@
 {
   "name": "exolvra-genesis",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Minimal Exolvra Genesis loop orchestrator for Claude Code: a lead agent iterates builder subagents against blind, fresh-context critics comparing real output to a concrete quality bar, until the assembled work wins twice in a row.",
   "author": {
     "name": "EvolvLabs, LLC",

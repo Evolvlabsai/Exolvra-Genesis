@@ -62,7 +62,15 @@ block), so every run on every machine gets the same card.
 ```
 
 Exolvra Genesis shows you the bar and the piece list, then waits. Reply `go`
-to start the loop. Add `.exolvra-genesis/` to your project's `.gitignore`.
+to start the loop. Add this to your project's `.gitignore`, so everything a
+run writes stays out of git while the standards and named goals your repo owns
+stay in it:
+
+```
+/.exolvra-genesis/*
+!/.exolvra-genesis/standards.md
+!/.exolvra-genesis/goals/
+```
 
 ## Running from a spec
 
@@ -126,7 +134,7 @@ Not yet on npm; build it from the repo:
 cd cli && npm install && npm run build && npm link
 ```
 
-Five commands:
+Seven commands:
 
 - `exolvra-genesis interview [spec-or-idea]` runs the same interview in the
   terminal. Each question renders in the frame, your typed answer resumes the
@@ -147,6 +155,17 @@ Five commands:
   verdict.
 - `exolvra-genesis resume [id]` continues a run in the session it started in.
   Bare `resume` offers a picker of unfinished runs.
+- `exolvra-genesis standards check` lints the standing bar your repo declares
+  in `.exolvra-genesis/standards.md`, with per-line errors; `standards init`
+  writes one through a question flow, shows the whole file before asking to
+  write it, and offers the `.gitignore` pattern from the quickstart. Every
+  run in a repo with standards inherits its gates, and no run can drop or
+  weaken one.
+- `exolvra-genesis goals` lists the reusable jobs in
+  `.exolvra-genesis/goals/`, `goals show <name>` prints one, and `goals new
+  <name>` scaffolds one through the interview. `run <name>` then runs it by
+  name: an existing path wins first, a goal name second, and anything else
+  is an inline goal, with an ambiguous token refused while naming both.
 
 `--model` pins the lead by exact model id. `--builder-model` and
 `--critic-model` take a model *family* (`opus`, `sonnet`, `haiku`, or

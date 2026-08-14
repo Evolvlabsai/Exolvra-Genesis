@@ -889,7 +889,15 @@ test('only the commands that declare it may succeed having printed nothing', asy
   const exempt = getCommands()
     .filter((command) => command.emptyIsSuccess === true)
     .map((command) => command.name);
-  assert.deepEqual(exempt, ['runs'], 'the exemption spread beyond the listing command');
+  // Exact, and deliberately not a rule about names: the exemption belongs to a
+  // command whose job is to list what is there, because a listing of nothing is
+  // a complete listing. Both of these are one — the run ledger and the repo's
+  // named goals — and a third has to be added here, by hand, to join them.
+  assert.deepEqual(
+    exempt,
+    ['goals', 'runs'],
+    'the exemption spread beyond the commands whose job is to list',
+  );
 
   // And the rule still holds for everything else, measured on a real process:
   // a command that claims success having written nothing is reported, not

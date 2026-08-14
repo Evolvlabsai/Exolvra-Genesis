@@ -25,7 +25,7 @@ CLI (from `cli/`):
 ```
 npm install && npm run build      # build also copies the plugin files into dist/plugin
 npm run typecheck                 # tsc --noEmit
-npm test                          # node --test, 551 tests; the packaging test is slow (~150s)
+npm test                          # node --test, 677 tests; the packaging test is slow (~150s)
 node --test test/<file>.test.js   # one suite, no rebuild
 ```
 
@@ -47,7 +47,7 @@ The CLI (`cli/src/`) mirrors the plugin without duplicating it:
 - `plugin-dir.ts` — resolves and loads the five plugin files (`PLUGIN_FILES`) from `EXOLVRA_GENESIS_PLUGIN_DIR`, the installed package (`dist/plugin/`, populated by `build:plugin`), or the repo; substitutes `${CLAUDE_PLUGIN_ROOT}` with the resolved directory. **Never rename `${CLAUDE_PLUGIN_ROOT}`** — it belongs to Claude Code.
 - `session.ts` — the only SDK boundary; tests substitute a fake transport here and nowhere else (the one permitted simulation).
 - `registry.ts` — commands self-register from `src/commands/` (zero-diff `cli.ts`); every value-taking flag must declare a validator or the registry-driven gate test fails it. Nothing reaches the SDK or filesystem unvalidated, and the agent's answer is validated too (never exit 0 having written nothing).
-- `commands/` — `run` (interactive clack startup on TTY, review pause, budget guards, SIGINT settling, `--json` NDJSON with a fixed 4-key summary), `plan` (Steps 0–2 preview), `runs`/`resume` (lock-serialized ledger in `.exolvra-genesis/runs.json`), `interview` (multi-turn conversation loop).
+- `commands/` — `run` (interactive clack startup on TTY, review pause, budget guards, SIGINT settling, `--json` NDJSON with a fixed 4-key summary), `plan` (Steps 0–2 preview), `runs`/`resume` (lock-serialized ledger in `.exolvra-genesis/runs.json`), `interview` (multi-turn conversation loop), `standards` (check/init for the repo's standing bar in `.exolvra-genesis/standards.md` — committed, unlike run state), `goals` (list/show/new for reusable jobs in `.exolvra-genesis/goals/`, resolvable by bare name in `run`/`plan`).
 - Rendering: display-width-aware tables (CJK/emoji/ZWJ correct), TSV when piped vs aligned on TTY, model output treated as untrusted renderer input, `--verbose` byte-verbatim. Lead model is pinned by exact id; builder/critic by model *family* — an SDK constraint, stated honestly in help.
 
 Run state lives under `.exolvra-genesis/` in the *target* project (gitignored): `bar/`, `state.json` (`{"status": "running" | "complete" | "stopped" | "blocked"}`), `progress.html`, `runs/`, `runs.json` (CLI ledger). Every exit path settles `state.json` and the ledger truthfully — a run that never started must not say `running`.

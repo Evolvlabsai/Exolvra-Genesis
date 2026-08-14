@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.0 — 2026-08-14
+
+- Repo-owned standards. A repo declares its standing quality bar in
+  `.exolvra-genesis/standards.md` (a purpose paragraph, gates, standing bar,
+  conventions) and every run in it inherits them: the lead merges standing
+  gates first and can never drop or weaken one, the progress page tags each
+  gate inherited or this-run, and the standards sha256 joins the per-round
+  attestations. `exolvra-genesis standards init` writes the file through a
+  question flow, shows the whole thing before asking to write, and offers
+  the `.gitignore` pattern that keeps standards tracked while run state
+  stays ignored. `standards check` lints it with per-line errors.
+- Named goals. `.exolvra-genesis/goals/<name>.md` holds reusable jobs in the
+  spec format. `goals` lists them, `goals show` prints one, `goals new`
+  scaffolds one through the interview. `run <token>` resolves an existing
+  path first, then a goal name, then an inline goal, and refuses an
+  ambiguous token while naming both candidates.
+- The mechanical half of never-weaken lives at input validation: an input
+  that restates standing gates under their own numbering must restate all
+  of them verbatim; anything that does not engage the standing ids passes
+  untouched to the lead's merge, where the judgment half lives in run.md.
+- Built by the loop, reduced scope: full R1-R11/C1-C7 coverage verified,
+  two LOSS rounds fixed and re-verified per finding to a WIN, and the
+  feature dogfooded on this repo - the standards file above was written by
+  the real `standards init` during the run.
+- Backlog cleared in the same release: `help <group> <leaf>` now renders the
+  leaf page (`help standards check` equals `standards check --help`, and an
+  unknown leaf gets the same error either way); `standards init` gathers
+  Conventions as paragraphs, one entry each, an empty entry to finish; and
+  the checkability lint masks code spans and paths before scanning, so a
+  digit no longer shields an adjective. The spec records why `standards
+  init` is a local flow while `goals new` borrows the interview: declaring
+  standards must work with zero credentials.
+
 ## 0.6.0 — 2026-08-11
 
 - Bar immutability is now a mechanism, not only a convention:

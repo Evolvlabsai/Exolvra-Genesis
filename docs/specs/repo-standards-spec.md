@@ -99,3 +99,20 @@ govern instead of being re-improvised per run.
   build — for the new subcommands' help, output, and error surfaces.
 - A `.exolvra-genesis/standards.md` written for this repo itself during the
   run — dogfooding is the fastest check that the format is livable.
+
+## Addendum v0.1.1 — R7's mechanism, recorded
+
+R7 and R8 both say "the interview," and they ship on two mechanisms: `goals
+new` scope-briefs `commands/interview.md` through a live agent session,
+while `standards init` is a local, deterministic question flow that reaches
+no SDK. The judged run scored R7 met on substance — every clause runs: one
+question at a time, scoped to stack, gates, standing bar and conventions,
+with the whole file shown and approved before anything is written.
+
+The divergence is deliberate, and the reason is access, not C6: declaring
+standards must work with zero credentials, offline, in CI, because it is
+the doorway to everything else — a repo should not need a model session to
+state its own gates. Goal authoring produces spec-format prose where an
+agent's drafting genuinely helps, so it borrows the interview. If the two
+are ever unified, unify toward the interview only if `standards init` keeps
+a credential-free path.

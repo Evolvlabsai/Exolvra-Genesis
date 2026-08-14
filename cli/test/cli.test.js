@@ -321,7 +321,106 @@ test('an unknown command exits 2 with a gh-shaped error naming what exists', () 
   assert.equal(lines[2], 'Usage:  exolvra-genesis <command> [flags]');
   assert.equal(lines[3], '');
   assert.equal(lines[4], 'Available commands:');
-  assert.equal(lines[5], '  interview');
+
+  /*
+   * The whole list, pinned, rather than the first row of it.
+   *
+   * What this error offers is part of the CLI's surface, so a command added
+   * later changes it — and that is worth being told about rather than
+   * absorbing silently. Pinned here, adding one fails this test loudly and the
+   * fix is to write the new name into the list below, which is also the moment
+   * to notice it is now what somebody who mistypes a command is shown.
+   */
+  const listed = lines.slice(5).filter((line) => line !== '');
+  assert.deepEqual(listed, [
+    '  goals',
+    '  interview',
+    '  plan',
+    '  resume',
+    '  run',
+    '  runs',
+    '  standards',
+  ]);
+
+  // And the pin is the registry's own list, in the registry's own order, so
+  // the two can never disagree about what exists — only about whether somebody
+  // noticed something was added.
+  assert.deepEqual(
+    listed,
+    getCommands().map((command) => '  ' + command.name),
+    'the error lists something other than the registered commands',
+  );
+});
+
+test('help <command> and <command> --help are one page, for every command', () => {
+  /*
+   * Two spellings of one request, so one page.
+   *
+   * A reader shown two different pages for one command has been told by the
+   * CLI itself that one of them is incomplete — and it was: the generic
+   * renderer knows nothing about a section a command lays out for itself, so a
+   * group with subcommands lost its AVAILABLE COMMANDS block down one of the
+   * two routes. Byte-equality across every registered command is the assertion
+   * because it is the only one a command added later cannot slip past.
+   */
+  for (const command of getCommands()) {
+    const viaHelp = run(['help', command.name]);
+    const viaFlag = run([command.name, '--help']);
+
+    assert.equal(viaHelp.code, 0, 'help ' + command.name + ' exited ' + viaHelp.code);
+    assert.equal(viaFlag.code, 0, command.name + ' --help exited ' + viaFlag.code);
+    assert.ok(viaFlag.stdout.length > 0, command.name + ' --help printed nothing');
+    assert.equal(viaHelp.stderr, '', 'help ' + command.name + ' wrote to stderr');
+    assert.equal(
+      viaHelp.stdout,
+      viaFlag.stdout,
+      'help ' + command.name + ' and ' + command.name + ' --help printed different pages',
+    );
+  }
+});
+
+test('help carries the rest of the line to the command, so a leaf gets its own page', () => {
+  // `gh help run list` renders the leaf. Dropping the token rendered the group
+  // page and called it the answer — a page about something the reader did not
+  // ask about, with no sign that the question was ignored.
+  const viaHelp = run(['help', 'standards', 'check']);
+  const viaFlag = run(['standards', 'check', '--help']);
+
+  assert.equal(viaHelp.code, 0, viaHelp.stderr);
+  assert.equal(viaHelp.stdout, viaFlag.stdout, 'help <group> <leaf> is not the leaf page');
+  assert.match(viaHelp.stdout, /^Validate the standards file this repo declares\.\n/);
+  assert.match(viaHelp.stdout, /USAGE\n {2}exolvra-genesis standards check \[flags\]\n/);
+  assert.doesNotMatch(viaHelp.stdout, /AVAILABLE COMMANDS/, 'the leaf page is the group page');
+});
+
+test('help names a subcommand that does not exist exactly as the command does', () => {
+  const viaHelp = run(['help', 'standards', 'bogus']);
+  const direct = run(['standards', 'bogus']);
+
+  assert.equal(viaHelp.code, 2, 'an unknown subcommand answered with a page');
+  assert.equal(viaHelp.stdout, '');
+  assert.equal(viaHelp.stderr, direct.stderr, 'the two spellings gave different reasons');
+  assert.match(viaHelp.stderr, /invalid value "bogus" for <command>: must be one of check, init/);
+});
+
+test('help with a stray token after a plain command still prints that command', () => {
+  // No leaves to choose between, so the argument boundary answers help first —
+  // which is what it does for `run extra --help` too.
+  const { code, stdout } = run(['help', 'run', 'extra']);
+  assert.equal(code, 0);
+  assert.equal(stdout, run(['run', '--help']).stdout);
+});
+
+test('a group page keeps its own sections down both routes', () => {
+  // The case the rule above exists for, named: a command that renders its own
+  // page has a section no generic renderer would draw.
+  for (const argv of [['help', 'standards'], ['standards', '--help']]) {
+    const { code, stdout } = run(argv);
+    assert.equal(code, 0);
+    assert.match(stdout, /AVAILABLE COMMANDS/, argv.join(' ') + ' dropped the command list');
+    assert.match(stdout, /\n {2}check: Validate the standards file this repo declares\n/);
+    assert.match(stdout, /\n {2}init: {2}Write one, one question at a time\n/);
+  }
 });
 
 test('an error quotes what the user typed without letting it drive the terminal', () => {

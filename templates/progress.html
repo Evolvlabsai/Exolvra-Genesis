@@ -2,7 +2,11 @@
 <!--
   EXOLVRA_GENESIS PROGRESS TEMPLATE
   ==========================
-  LEAD AGENT: update ONLY the JSON inside <script id="exolvra-genesis-data">.
+  LEAD AGENT: replace ONLY the JSON between the BEGIN and END markers below.
+  They are HTML comments wrapping this template's data block — the element
+  with the id exolvra-genesis-data — and each appears exactly once in this
+  file, so splicing between them can swallow nothing else. Match the markers,
+  never a tag: an opening-tag pattern would also match prose about one.
   Never edit the markup, styles, or renderer — that is what keeps this page
   identical for every user of the plugin. Escape any "</" inside JSON string
   values as "<\/". In gap/basis/note/desc strings, `backticks` render as
@@ -18,6 +22,11 @@
     "streak":  number,                    // consecutive whole-artifact wins
     "win_target": number,                 // default 2
     "bar": [ { "name": string, "desc": string } ],   // captured bar artifacts
+    "gates": [                             // hard gates, in the merged order
+      { "id": "G1",                        // optional label; "text" is the gate
+        "text": string,
+        "inherited": true }                // true = standing gate the repo owns,
+    ],                                     // i.e. from .exolvra-genesis/standards.md
     "pieces": [
       { "id": "P1", "name": string, "note": string,  // note = current gap/state, shown under name
         "covers": "C1–C5, R3", "wave": number,
@@ -36,6 +45,11 @@
     },
     "integrity": [ string ]                // footer lines: spec hash, bar pin, critic isolation
   }
+
+  The "Hard gates" section appears only when "gates" is present and non-empty,
+  and each row is tagged INHERITED or THIS RUN so a reader can tell which
+  constraints the repo owns. Omit the field and the page renders exactly as it
+  did before the field existed.
 -->
 <html lang="en">
 <head>
@@ -88,6 +102,15 @@
   .bar-item { display: flex; gap: 14px; padding: 7px 0; align-items: baseline; }
   .bar-item code { font: 12px var(--mono); color: var(--accent); }
   .bar-item span { color: var(--muted); font-size: 13px; }
+  .gate-item { display: flex; gap: 12px; padding: 7px 0; align-items: baseline; }
+  .gate-item .gid { display: inline-block; min-width: 24px;
+                    font: 600 12px var(--mono); color: var(--accent); }
+  .gate-item .text { flex: 1; font-size: 13.5px; }
+  .origin { font: 600 10px/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase;
+            white-space: nowrap; padding: 4px 6px; border-radius: 4px;
+            border: 1px solid currentColor; }
+  .o-inherited { color: var(--accent); }
+  .o-run { color: var(--muted); }
   .empty { color: var(--muted); font-size: 13.5px; font-style: italic; padding: 6px 0; }
   .wave { font: 600 11px var(--mono); color: var(--muted); letter-spacing: 0.06em; }
   footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
@@ -108,6 +131,7 @@
 <body>
 <div class="wrap">
 
+<!-- EXOLVRA-GENESIS-DATA-BEGIN -->
 <script id="exolvra-genesis-data" type="application/json">
 {
   "goal": "",
@@ -119,6 +143,7 @@
   "rounds": []
 }
 </script>
+<!-- EXOLVRA-GENESIS-DATA-END -->
 
 <header>
   <h1 id="title">Exolvra Genesis</h1>
@@ -127,6 +152,11 @@
 
 <h2>The bar</h2>
 <div class="panel" id="bar"></div>
+
+<section id="gatesSec" style="display:none">
+  <h2>Hard gates</h2>
+  <div class="panel" id="gates"></div>
+</section>
 
 <h2>Pieces</h2>
 <div class="panel" id="pieces"></div>
@@ -207,6 +237,26 @@
     var s = el('span'); s.appendChild(fmt(b.desc || '')); row.appendChild(s);
     bar.appendChild(row);
   });
+
+  // Hard gates, tagged with where each one came from
+  var gateRows = (d.gates || []).filter(function (g) { return g && g.text; });
+  if (gateRows.length) {
+    document.getElementById('gatesSec').style.display = '';
+    var gatesEl = document.getElementById('gates');
+    var hasIds = gateRows.some(function (g) { return g.id; });
+    gateRows.forEach(function (g) {
+      var row = el('div', 'gate-item');
+      if (hasIds) row.appendChild(el('code', 'gid', g.id || ''));
+      var s = el('span', 'text'); s.appendChild(fmt(g.text)); row.appendChild(s);
+      var tag = el('span', 'origin ' + (g.inherited ? 'o-inherited' : 'o-run'),
+        g.inherited ? 'inherited' : 'this run');
+      tag.title = g.inherited
+        ? 'Standing gate, from .exolvra-genesis/standards.md'
+        : 'Declared by this run';
+      row.appendChild(tag);
+      gatesEl.appendChild(row);
+    });
+  }
 
   // Pieces
   var pieces = document.getElementById('pieces');

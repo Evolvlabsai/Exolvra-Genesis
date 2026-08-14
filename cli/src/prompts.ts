@@ -399,6 +399,60 @@ export async function askText(
   }
 }
 
+/**
+ * Puts one question that wants prose, and takes as many paragraphs as are
+ * offered.
+ *
+ * A single line is the wrong shape for an answer the file keeps as prose: a
+ * terminal prompt takes one line, so anything with a paragraph break in it
+ * either arrives flattened or does not arrive. This asks again after each
+ * paragraph and stops on an empty answer, which is the one keystroke a person
+ * already reaches for when they have finished typing.
+ *
+ * The first answer is still required — a question with no answer at all is not
+ * an answer — and every one after it is optional, which is what the hint under
+ * the field says in as many words. Paragraphs come back joined by a blank line,
+ * exactly as markdown separates them and exactly as the parser reads them back.
+ */
+export async function askProse(
+  message: string,
+  io: PromptStreams,
+  options: {
+    placeholder?: string;
+    progress?: Progress;
+    closeWith?: string | false;
+  } = {},
+): Promise<string> {
+  options.progress?.suspend();
+  try {
+    const paragraphs: string[] = [];
+    for (;;) {
+      const first = paragraphs.length === 0;
+      const answer = await put(
+        text({
+          message: first ? message : 'Another paragraph?',
+          placeholder: first
+            ? (options.placeholder ?? 'one paragraph — Enter on an empty answer finishes')
+            : 'Enter on an empty answer finishes',
+          validate: (value: string | undefined) =>
+            first && (value ?? '').trim() === ''
+              ? 'An answer is needed to carry on.'
+              : undefined,
+          input: io.input,
+          output: io.output,
+        }),
+        io.output,
+        options.closeWith,
+      );
+      const paragraph = answer.trim();
+      if (paragraph === '') return paragraphs.join('\n\n');
+      paragraphs.push(paragraph);
+    }
+  } finally {
+    options.progress?.resume();
+  }
+}
+
 /** Columns clack draws in front of every line it rails. */
 const RAIL_GUTTER = 3;
 
