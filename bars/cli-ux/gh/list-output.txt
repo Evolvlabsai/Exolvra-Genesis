@@ -1,0 +1,6 @@
+completed	success	gh skill install drops the execute bit, so bundled scripts/ files are not runnable	Triage Scheduled Tasks	trunk	issue_comment	31414780582	9s	2026-08-10T17:35:29Z
+completed	success	Triage Scheduled Tasks	Triage Scheduled Tasks	trunk	schedule	31413936425	12s	2026-08-10T17:25:20Z
+completed	success	chore(deps): bump github.com/klauspost/compress from 1.19.1 to 1.19.2	PR Triaging	dependabot/go_modules/github.com/klauspost/compress-1.19.2	pull_request_target	31413328853	15s	2026-08-10T17:18:03Z
+completed	success	chore(deps): bump github.com/google/go-containerregistry from 0.21.8 to 0.21.9	PR Triaging	dependabot/go_modules/github.com/google/go-containerregistry-0.21.9	pull_request_target	31413315633	9s	2026-08-10T17:17:53Z
+completed	success	[aw] Detection Runs	Issue Triaging	trunk	issues	31413235694	7s	2026-08-10T17:16:55Z
+completed	success	Dependabot PR Triage (skills-driven)	Dependabot PR Triage (skills-driven)	trunk	schedule	31411888610	3m20s	2026-08-10T17:00:50Z

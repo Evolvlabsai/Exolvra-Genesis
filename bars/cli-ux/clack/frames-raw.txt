@@ -1,0 +1,62 @@
+[90m┌[39m  gauntlet run
+[?25l[90m│[39m
+[36m◆[39m  What are we building?
+[36m│[39m  [7ma[27m[2m goal, or a path to a spec file[22m
+[36m└[39m
+[999D[4A[2B[2K[G[36m│[39m  s█[2B[999D[4A[2B[2K[G[36m│[39m  sp█[2B[999D[4A[2B[2K[G[36m│[39m  spe█[2B[999D[4A[2B[2K[G[36m│[39m  spec█[2B[999D[4A[2B[2K[G[36m│[39m  specs█[2B[999D[4A[2B[2K[G[36m│[39m  specs/█[2B[999D[4A[2B[2K[G[36m│[39m  specs/c█[2B[999D[4A[2B[2K[G[36m│[39m  specs/ch█[2B[999D[4A[2B[2K[G[36m│[39m  specs/che█[2B[999D[4A[2B[2K[G[36m│[39m  specs/chec█[2B[999D[4A[2B[2K[G[36m│[39m  specs/check█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checko█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkou█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-f█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-fl█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-flo█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-flow█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-flow.█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-flow.m█[2B[999D[4A[2B[2K[G[36m│[39m  specs/checkout-flow.md█[2B[999D[4A[1B[J[32m◇[39m  What are we building?
+[90m│[39m  [2mspecs/checkout-flow.md[22m
+[?25h[?25l[90m│[39m
+[36m◆[39m  Lead model
+[36m│[39m  [32m●[39m inherit [2m(use your session default)[22m
+[36m│[39m  [2m○[22m [2mclaude-opus-4-8[22m
+[36m│[39m  [2m○[22m [2mclaude-sonnet-4-8[22m
+[36m│[39m  [2m↑/↓[22m to navigate • [2mEnter:[22m confirm
+[36m└[39m
+[999D[7A[2B[J[36m│[39m  [2m○[22m [2minherit[22m
+[36m│[39m  [32m●[39m claude-opus-4-8 [2m(strongest orchestrator)[22m
+[36m│[39m  [2m○[22m [2mclaude-sonnet-4-8[22m
+[36m│[39m  [2m↑/↓[22m to navigate • [2mEnter:[22m confirm
+[36m└[39m
+[999D[7A[1B[J[32m◇[39m  Lead model
+[90m│[39m  [2mclaude-opus-4-8[22m
+[?25h[?25l[90m│[39m
+[36m◆[39m  Builder model
+[36m│[39m  [32m●[39m inherit
+[36m│[39m  [2m○[22m [2mclaude-opus-4-8[22m
+[36m│[39m  [2m○[22m [2mclaude-sonnet-4-8[22m
+[36m│[39m  [2m↑/↓[22m to navigate • [2mEnter:[22m confirm
+[36m└[39m
+[999D[7A[2B[J[36m│[39m  [2m○[22m [2minherit[22m
+[36m│[39m  [32m●[39m claude-opus-4-8
+[36m│[39m  [2m○[22m [2mclaude-sonnet-4-8[22m
+[36m│[39m  [2m↑/↓[22m to navigate • [2mEnter:[22m confirm
+[36m└[39m
+[999D[7A[3B[J[36m│[39m  [2m○[22m [2mclaude-opus-4-8[22m
+[36m│[39m  [32m●[39m claude-sonnet-4-8 [2m(where the tokens go)[22m
+[36m│[39m  [2m↑/↓[22m to navigate • [2mEnter:[22m confirm
+[36m└[39m
+[999D[7A[1B[J[32m◇[39m  Builder model
+[90m│[39m  [2mclaude-sonnet-4-8[22m
+[?25h[?25l[90m│[39m
+[36m◆[39m  Review the bar before the loop starts?
+[36m│[39m  [32m●[39m Yes [2m/[22m [2m○[22m [2mNo[22m
+[36m└[39m
+[999D[4A[1B[J[32m◇[39m  Review the bar before the loop starts?
+[90m│[39m  [2mYes[22m
+[?25h[90m│[39m
+[32m◇[39m  [0mRun plan[0m [90m────────────────────────────────╮[39m
+[90m│[39m                                           [90m│[39m
+[90m│[39m  bar      .gauntlet/bar/ (4 screenshots)  [90m│[39m
+[90m│[39m  pieces   6 across 3 waves                [90m│[39m
+[90m│[39m  progress .gauntlet/progress.html         [90m│[39m
+[90m│[39m                                           [90m│[39m
+[90m├───────────────────────────────────────────╯[39m
+[?25l[90m│[39m
+[35m◒[39m  Capturing the bar[1G[J[35m◐[39m  Capturing the bar[1G[J[35m◓[39m  Capturing the bar[1G[J[32m◇[39m  Bar captured
+[?25h[90m│[39m
+[32m◆[39m  piece 1/6  round 1  WIN   no gap
+[90m│[39m
+[33m▲[39m  piece 2/6  round 1  LOSS  spacing is 4px tighter than the bar
+[90m│[39m
+[90m└[39m  Done — goal=specs/checkout-flow.md lead=opus builder=sonnet review=true
+

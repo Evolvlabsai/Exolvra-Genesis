@@ -1,0 +1,61 @@
+┌  gauntlet run
+│
+◆  What are we building?
+│  a goal, or a path to a spec file
+└
+│  s█│  sp█│  spe█│  spec█│  specs█│  specs/█│  specs/c█│  specs/ch█│  specs/che█│  specs/chec█│  specs/check█│  specs/checko█│  specs/checkou█│  specs/checkout█│  specs/checkout-█│  specs/checkout-f█│  specs/checkout-fl█│  specs/checkout-flo█│  specs/checkout-flow█│  specs/checkout-flow.█│  specs/checkout-flow.m█│  specs/checkout-flow.md█◇  What are we building?
+│  specs/checkout-flow.md
+│
+◆  Lead model
+│  ● inherit (use your session default)
+│  ○ claude-opus-4-8
+│  ○ claude-sonnet-4-8
+│  ↑/↓ to navigate • Enter: confirm
+└
+│  ○ inherit
+│  ● claude-opus-4-8 (strongest orchestrator)
+│  ○ claude-sonnet-4-8
+│  ↑/↓ to navigate • Enter: confirm
+└
+◇  Lead model
+│  claude-opus-4-8
+│
+◆  Builder model
+│  ● inherit
+│  ○ claude-opus-4-8
+│  ○ claude-sonnet-4-8
+│  ↑/↓ to navigate • Enter: confirm
+└
+│  ○ inherit
+│  ● claude-opus-4-8
+│  ○ claude-sonnet-4-8
+│  ↑/↓ to navigate • Enter: confirm
+└
+│  ○ claude-opus-4-8
+│  ● claude-sonnet-4-8 (where the tokens go)
+│  ↑/↓ to navigate • Enter: confirm
+└
+◇  Builder model
+│  claude-sonnet-4-8
+│
+◆  Review the bar before the loop starts?
+│  ● Yes / ○ No
+└
+◇  Review the bar before the loop starts?
+│  Yes
+│
+◇  Run plan ────────────────────────────────╮
+│                                           │
+│  bar      .gauntlet/bar/ (4 screenshots)  │
+│  pieces   6 across 3 waves                │
+│  progress .gauntlet/progress.html         │
+│                                           │
+├───────────────────────────────────────────╯
+│
+◒  Capturing the bar◐  Capturing the bar◓  Capturing the bar◇  Bar captured
+│
+◆  piece 1/6  round 1  WIN   no gap
+│
+▲  piece 2/6  round 1  LOSS  spacing is 4px tighter than the bar
+│
+└  Done — goal=specs/checkout-flow.md lead=opus builder=sonnet review=true
