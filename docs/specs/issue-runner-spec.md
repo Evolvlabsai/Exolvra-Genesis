@@ -145,3 +145,28 @@ that first.
   reference for the lifecycle in R5 and the constraints in C4 and C8.
 - `templates/progress.html` — the shipped template — as the bar for R7 and
   R8.
+
+## Addendum v0.1.1 — charting joins the effort
+
+`docs/specs/chart-spec.md` folds into this effort: wayfinding the decisions
+is the front half of the pipeline whose back half is this runner. What they
+share, so neither drifts:
+
+- One label namespace. The runner's lifecycle labels and charting's
+  `exolvra:map` / `exolvra:decide` live under the same `exolvra:` prefix,
+  and no command of either feature touches a label outside it.
+- One network module. Charting's GitHub mode makes every call through the
+  single module C2 establishes; it adds no second network path and inherits
+  C3's rule that subagents never touch the remote.
+- One claim protocol. A charting ticket's claim is the assignee, exactly as
+  the runner claims an issue, with the same stale-claim TTL semantics
+  (C7 here) applied to decision tickets.
+- The pipeline seam: a resolved map hands off as ready-labeled issues (the
+  runner's authorization boundary, applied by the human per C5) or as
+  goals/specs the runner's issues can reference. Decisions stay HITL;
+  execution stays gated on the ready label and on PR review.
+
+Build order within the effort: charting's local mode first (no dependency
+on this spec), then this runner, then charting's GitHub mode on the
+runner's module. The dogfood is shared: the first map charts this runner's
+own build (chart-spec R10).
