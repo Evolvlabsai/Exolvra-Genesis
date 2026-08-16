@@ -237,6 +237,22 @@ function withoutCredentials(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return out;
 }
 
+/**
+ * What this runner's own bookkeeping lives in, which is not the repository's work.
+ *
+ * Handed to every git context this command builds, and it has to be every one:
+ * the directory does not make the work tree unclean, and it is never staged.
+ * Without the first, a fresh adopter whose repository has no `.gitignore` is
+ * refused by the runner's own snapshot the moment it writes one — which is
+ * exactly what a live pass found, and what every fixture here hid by carrying a
+ * `.gitignore` that already excluded it. Without the second, the same
+ * bookkeeping would ride into somebody's pull request.
+ *
+ * A repository that *does* ignore the directory is unaffected: git was never
+ * going to report an ignored path either way.
+ */
+const IGNORED_BY_THE_RUNNER: readonly string[] = [RUN_DIR];
+
 /** The label that makes an issue eligible: a maintainer's act, and nothing else. */
 const READY = lifecycleLabel('ready');
 
@@ -1117,7 +1133,11 @@ function progressPagePath(cwd: string, runId: string): string {
  * that can only read says so in its value.
  */
 function readOnlyCheckout(cwd: string): GitContext {
-  return { cwd, repo: { defaultBranch: '', protectedBranches: ['**'], repo: 'this checkout' } };
+  return {
+    cwd,
+    repo: { defaultBranch: '', protectedBranches: ['**'], repo: 'this checkout' },
+    ignorePaths: IGNORED_BY_THE_RUNNER,
+  };
 }
 
 /**
@@ -1983,6 +2003,7 @@ async function guardFor(pass: Pass, repo: Repo): Promise<{ info: RepoInfo; git: 
     info,
     git: {
       cwd: pass.cwd,
+      ignorePaths: IGNORED_BY_THE_RUNNER,
       repo: {
         defaultBranch: info.defaultBranch,
         protectedBranches: await reread(pass.reporter, 'read the protected branches of ' + slug, () =>

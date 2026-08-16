@@ -270,7 +270,8 @@ test('the vocabulary is the whole of what this module can run', () => {
         name + ' carries the forbidden argument ' + element,
       );
       assert.ok(!element.startsWith('+'), name + ' carries a forced refspec: ' + element);
-      if (/^<[a-z-]+>$/.test(element)) {
+      // A hole takes one value or a list of them; either way it declares a type.
+      if (/^<[a-z-]+(?:\.\.\.)?>$/.test(element)) {
         assert.equal(
           typeof VALUE_TYPES[element],
           'function',
@@ -285,6 +286,23 @@ test('the vocabulary is the whole of what this module can run', () => {
     ['push'],
     'exactly one entry may reach a remote',
   );
+
+  // The two commands that touch the work tree take the same hole, so what one
+  // is told to overlook is what the other is told not to stage. They are the
+  // only two, and nothing else in the vocabulary is pointed at paths at all.
+  const withPaths = Object.entries(GIT_COMMANDS)
+    .filter(([, template]) => template.includes('<pathspec...>'))
+    .map(([name]) => name);
+  assert.deepEqual(withPaths.slice().sort(), ['changes', 'stageAll']);
+  for (const name of withPaths) {
+    const template = GIT_COMMANDS[name];
+    assert.equal(
+      template[template.length - 2],
+      '--',
+      name + ' must separate its pathspecs from its options',
+    );
+    assert.equal(template[template.length - 1], '<pathspec...>');
+  }
 });
 
 test('every vocabulary entry builds with valid values, and only those', () => {
@@ -296,6 +314,7 @@ test('every vocabulary entry builds with valid values, and only those', () => {
     '<refspec>': pushRefspec('exolvra-genesis/issue-12-fix-login'),
     '<message>': 'fix login\n\nthe body of the message',
     '<remote>': 'origin',
+    '<pathspec...>': [':/', ':(exclude,top).exolvra-genesis'],
   };
 
   for (const [name, template] of Object.entries(GIT_COMMANDS)) {
@@ -306,17 +325,16 @@ test('every vocabulary entry builds with valid values, and only those', () => {
       }
     }
     const argv = buildGitArgv(name, supplied);
-    assert.equal(argv.length, template.length, name + ' changed length while filling');
-    for (let index = 0; index < template.length; index += 1) {
-      const element = template[index];
-      if (Object.prototype.hasOwnProperty.call(values, element)) {
-        // Whole-element substitution: the value is one argument, entire and
-        // alone. There is no argument it was spliced into.
-        assert.equal(argv[index], values[element], name + ' mangled ' + element);
-      } else {
-        assert.equal(argv[index], element, name + ' altered a literal argument');
-      }
-    }
+
+    // Every element of the template becomes one element of the vector, except a
+    // list hole, which becomes exactly as many as it was given — each of them
+    // whole and alone, with nothing spliced into anything.
+    const expected = template.flatMap((element) =>
+      Object.prototype.hasOwnProperty.call(values, element)
+        ? [values[element]].flat()
+        : [element],
+    );
+    assert.deepEqual(argv, expected, name + ' did not fill as written');
   }
 });
 
@@ -357,7 +375,16 @@ test('a hole with no value, and a value with no hole, are both refused', () => {
     /with a hole left open/,
   );
   assert.match(
-    refusal(() => buildGitArgv('stageAll', { '<branch>': 'exolvra-genesis/x' })),
+    refusal(() => buildGitArgv('repoRoot', { '<branch>': 'exolvra-genesis/x' })),
+    /an argument it has no hole for/,
+  );
+  assert.match(
+    refusal(() =>
+      buildGitArgv('stageAll', {
+        '<pathspec...>': [':/'],
+        '<branch>': 'exolvra-genesis/issue-1-a',
+      }),
+    ),
     /an argument it has no hole for/,
   );
 });
@@ -399,6 +426,23 @@ test('every declared value type refuses what it must', () => {
     ],
     '<message>': ['', '   \n\n  ', 'subject\n\nCo-authored-by: Someone <s@example.com>'],
     '<remote>': ['', 'or/igin', '-f', 'origin remote'],
+    // A pathspec is git's own magic syntax, so the type is written over the
+    // finished pathspec: a value that could introduce magic of its own is the
+    // whole risk here.
+    '<pathspec...>': [
+      '',
+      '.exolvra-genesis',
+      ':(exclude).exolvra-genesis',
+      ':(exclude,top)',
+      ':(exclude,top)/etc/passwd',
+      ':(exclude,top)../elsewhere',
+      ':(exclude,top)a//b',
+      ':(exclude,top)-f',
+      ':(glob,exclude,top).exolvra-genesis',
+      ':!.exolvra-genesis',
+      ':',
+      ':/etc',
+    ],
   };
 
   for (const [placeholder, values] of Object.entries(hostile)) {
@@ -427,6 +471,40 @@ test('every declared value type refuses what it must', () => {
   );
   assert.equal(VALUE_TYPES['<message>']('fix login'), undefined);
   assert.equal(VALUE_TYPES['<remote>']('origin'), undefined);
+  assert.equal(VALUE_TYPES['<pathspec...>'](':/'), undefined);
+  assert.equal(VALUE_TYPES['<pathspec...>'](':(exclude,top).exolvra-genesis'), undefined);
+  assert.equal(VALUE_TYPES['<pathspec...>'](':(exclude,top)a/b.c_d-e'), undefined);
+});
+
+test('a hole that takes a list refuses one value, and a hole that takes one refuses a list', () => {
+  const paths = [':/', ':(exclude,top).exolvra-genesis'];
+  assert.deepEqual(buildGitArgv('stageAll', { '<pathspec...>': paths }), [
+    'add',
+    '--all',
+    '--',
+    ...paths,
+  ]);
+
+  assert.match(
+    refusal(() => buildGitArgv('stageAll', { '<pathspec...>': ':/' })),
+    /<pathspec\.\.\.> takes a list of values/,
+  );
+  assert.match(
+    refusal(() => buildGitArgv('stageAll', { '<pathspec...>': [] })),
+    /a list of values with nothing in it is not an argument/,
+  );
+  assert.match(
+    refusal(() => buildGitArgv('switchBranch', { '<branch>': ['exolvra-genesis/issue-1-a'] })),
+    /<branch> takes one value/,
+  );
+
+  // Every item of the list is checked, not merely the first.
+  assert.match(
+    refusal(() =>
+      buildGitArgv('stageAll', { '<pathspec...>': [':/', ':(exclude,top)../elsewhere'] }),
+    ),
+    /may not contain "\.\."/,
+  );
 });
 
 test('a NUL byte ends an argument, so it is refused before the value type is asked', () => {
@@ -1020,6 +1098,166 @@ test('an unclean starting point is refused, and it names what is in the way', ()
     refusal(() => assertCleanTree(ctx)),
     /commit or stash them/,
   );
+});
+
+/*
+ * The runner keeps its state inside the checkout it is working in. A fresh
+ * adopter's repository does not gitignore that directory — every fixture in
+ * this file used to, which is exactly why a whole suite missed the bug — so the
+ * two sides below are tested in a repository with no `.gitignore` at all.
+ */
+const STATE_DIR = '.exolvra-genesis';
+
+/** Writes a runner state directory into `work`, the way a real pass does. */
+function writeRunState(work) {
+  mkdirSync(join(work, STATE_DIR, 'runs', 'r-1'), { recursive: true });
+  mkdirSync(join(work, STATE_DIR, 'bar'), { recursive: true });
+  writeFileSync(join(work, STATE_DIR, 'state.json'), '{"status":"running"}\n', 'utf8');
+  writeFileSync(join(work, STATE_DIR, 'runs', 'r-1', 'issue.md'), '# issue\n', 'utf8');
+  writeFileSync(join(work, STATE_DIR, 'bar', 'BAR.md'), '# bar\n', 'utf8');
+}
+
+test('the runner\'s own state directory does not make the work tree unclean', () => {
+  const { work } = makeRepo();
+  assert.equal(existsSync(join(work, '.gitignore')), false, 'no gitignore, as adopters have');
+  writeRunState(work);
+
+  // Without the exclusion this is what the live smoke pass hit: the runner's
+  // own bookkeeping counted as somebody else's uncommitted work.
+  const blind = context(work);
+  assert.deepEqual(
+    workingTreeChanges(blind).map((change) => change.path).sort(),
+    [
+      '.exolvra-genesis/bar/BAR.md',
+      '.exolvra-genesis/runs/r-1/issue.md',
+      '.exolvra-genesis/state.json',
+    ],
+  );
+  assert.match(
+    refusal(() => ensureIssueBranch(blind, { number: 1, title: 'Blocked by its own state' })),
+    /^refusing to start on a work tree with uncommitted changes/,
+  );
+
+  // With it, the same tree is clean and the run starts.
+  const ctx = context(work, { ignorePaths: [STATE_DIR] });
+  assert.deepEqual(workingTreeChanges(ctx), []);
+  assert.equal(assertCleanTree(ctx), undefined);
+  assert.deepEqual(ensureIssueBranch(ctx, { number: 1, title: 'Fix login' }), {
+    branch: 'exolvra-genesis/issue-1-fix-login',
+    state: 'created',
+    base: 'main',
+  });
+});
+
+test('what the clean check overlooks, the commit never stages', () => {
+  const { work, remote } = makeRepo();
+  const ctx = context(work, { ignorePaths: [STATE_DIR] });
+  const branch = ensureIssueBranch(ctx, { number: 2, title: 'Real work' }).branch;
+
+  // A round: the builders change the repository, and the runner writes its own
+  // state beside them, in the same tree, at the same time.
+  writeRunState(work);
+  writeFileSync(join(work, 'login.js'), 'export const login = () => true;\n', 'utf8');
+  mkdirSync(join(work, 'src'), { recursive: true });
+  writeFileSync(join(work, 'src', 'deep.js'), 'export const deep = 1;\n', 'utf8');
+
+  const commit = commitAll(ctx, 'work for issue 2');
+  assert.equal(commit.committed, true);
+  assert.deepEqual(
+    commit.changes.map((change) => change.path).sort(),
+    ['login.js', 'src/deep.js'],
+    'the change set names the work and not the bookkeeping',
+  );
+
+  // What the commit really contains, read back out of git rather than claimed.
+  const tracked = git(work, ['ls-tree', '-r', '--name-only', 'HEAD']).split('\n').sort();
+  assert.deepEqual(tracked, ['README.md', 'login.js', 'src/deep.js']);
+  for (const path of tracked) {
+    assert.ok(!path.startsWith(STATE_DIR), path + ' reached the commit');
+  }
+  assert.equal(
+    git(work, ['ls-files', '--', STATE_DIR]),
+    '',
+    'not one byte under the state directory is tracked',
+  );
+
+  // And it is still sitting there, untracked, for the next round to use.
+  assert.equal(existsSync(join(work, STATE_DIR, 'state.json')), true);
+  assert.deepEqual(workingTreeChanges(ctx), [], 'the tree is clean again');
+
+  // Through the push, onto a real remote: the ref carries the work only.
+  pushBranch(ctx, branch);
+  assert.deepEqual(remoteRefs(remote), [commit.sha + ' refs/heads/' + branch]);
+  assert.deepEqual(
+    git(remote, ['ls-tree', '-r', '--name-only', 'refs/heads/' + branch])
+      .split('\n')
+      .sort(),
+    ['README.md', 'login.js', 'src/deep.js'],
+  );
+});
+
+test('a genuinely dirty tree still refuses, naming what is in the way and nothing else', () => {
+  const { work } = makeRepo();
+  const ctx = context(work, { ignorePaths: [STATE_DIR] });
+  writeRunState(work);
+  writeFileSync(join(work, 'left-behind.txt'), 'stray\n', 'utf8');
+  writeFileSync(join(work, 'README.md'), '# edited\n', 'utf8');
+
+  const message = refusal(() => ensureIssueBranch(ctx, { number: 3, title: 'Fix login' }));
+  assert.equal(
+    message,
+    [
+      'refusing to start on a work tree with uncommitted changes',
+      '   M README.md',
+      '  ?? left-behind.txt',
+      '  commit or stash them, then run again',
+    ].join('\n'),
+  );
+  assert.ok(!message.includes(STATE_DIR), 'the excluded path is not named as a problem');
+  assert.equal(currentBranch(ctx), 'main', 'and no branch was created');
+});
+
+test('a path to leave alone is repository-relative, and refused when it is not', () => {
+  const { work } = makeRepo();
+  writeRunState(work);
+
+  for (const path of ['', '../elsewhere', '/etc', 'a/../b', 'a//b', '-f', ':(exclude)x']) {
+    assert.match(
+      refusal(() => workingTreeChanges(context(work, { ignorePaths: [path] }))),
+      /refusing to leave ".*" alone/,
+      'accepted ' + JSON.stringify(path),
+    );
+  }
+
+  // A Windows caller builds paths with backslashes; those are separators here.
+  assert.deepEqual(
+    workingTreeChanges(context(work, { ignorePaths: ['.exolvra-genesis\\'] })),
+    [],
+  );
+  assert.deepEqual(
+    workingTreeChanges(context(work, { ignorePaths: ['.exolvra-genesis/runs'] })).map(
+      (change) => change.path,
+    ).sort(),
+    ['.exolvra-genesis/bar/BAR.md', '.exolvra-genesis/state.json'],
+    'and an exclusion is only as wide as it is written',
+  );
+});
+
+test('an exclusion means the same thing from anywhere in the work tree', () => {
+  const { work } = makeRepo();
+  writeRunState(work);
+  mkdirSync(join(work, 'sub', 'deeper'), { recursive: true });
+  writeFileSync(join(work, 'sub', 'deeper', 'a.txt'), 'a\n', 'utf8');
+
+  // `ctx.cwd` is any directory inside the checkout, so a pathspec read relative
+  // to it would exclude a different directory depending on where the runner was
+  // started — and would stop seeing the rest of the repository at all.
+  const fromRoot = workingTreeChanges(context(work, { ignorePaths: [STATE_DIR] }));
+  const fromDeep = workingTreeChanges(
+    context(join(work, 'sub', 'deeper'), { ignorePaths: [STATE_DIR] }),
+  );
+  assert.deepEqual(fromRoot.map((change) => change.path), ['sub/deeper/a.txt']);
+  assert.deepEqual(fromDeep, fromRoot);
 });
 
 test('C4: pushing the default branch is refused, and the remote stays empty', () => {

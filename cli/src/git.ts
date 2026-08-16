@@ -106,14 +106,27 @@ export const GIT_COMMANDS = Object.freeze({
   resolveSymref: Object.freeze(['symbolic-ref', '--quiet', '<ref>']),
   /** Resolves a ref, or exits non-zero without a word when there is none. */
   verifyRef: Object.freeze(['rev-parse', '--verify', '--quiet', '<ref>']),
-  /** Everything the work tree has that HEAD does not, NUL-separated. */
-  changes: Object.freeze(['status', '--porcelain', '--untracked-files=all', '-z']),
+  /**
+   * Everything the work tree has that HEAD does not, NUL-separated.
+   *
+   * Ends in the same pathspec hole as {@link GIT_COMMANDS.stageAll}, and that
+   * is not a coincidence: what this command is told to overlook is exactly what
+   * that command is told not to stage, built once by `pathspecsFor`.
+   */
+  changes: Object.freeze([
+    'status',
+    '--porcelain',
+    '--untracked-files=all',
+    '-z',
+    '--',
+    '<pathspec...>',
+  ]),
   /** Starts the issue branch at the current HEAD. */
   createBranch: Object.freeze(['checkout', '-b', '<branch>']),
   /** Moves onto a branch that already exists. */
   switchBranch: Object.freeze(['checkout', '<branch>']),
-  /** Stages the whole work tree, ignored files excluded as git excludes them. */
-  stageAll: Object.freeze(['add', '--all']),
+  /** Stages the work tree, minus what git ignores and what the caller excludes. */
+  stageAll: Object.freeze(['add', '--all', '--', '<pathspec...>']),
   /** Commits what is staged, with the message exactly as it was composed. */
   commit: Object.freeze(['commit', '--cleanup=verbatim', '--message', '<message>']),
   /** How many commits one end of a range has that the other does not. */
@@ -350,6 +363,97 @@ function remoteFault(remote: string): string | undefined {
   return undefined;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Pathspecs: what the work tree commands are pointed at                       */
+/* -------------------------------------------------------------------------- */
+
+/** Every path in the repository, wherever in it git was run from. */
+const EVERYTHING = ':/';
+
+/**
+ * git's own spelling of "not this one", anchored at the work tree root.
+ *
+ * `top` is the half that matters: without it a pathspec is read relative to the
+ * directory git was started in, and this module is handed *any* directory
+ * inside the work tree. An exclusion that quietly meant a different directory
+ * depending on where the runner was invoked from would be worse than none.
+ */
+const EXCLUDE = ':(exclude,top)';
+
+/** Longest a path handed to {@link GitContext.ignorePaths} may be. */
+const MAX_PATH_LENGTH = 200;
+
+/**
+ * A caller's path as a pathspec needs it: forward slashes, no trailing one.
+ *
+ * Windows callers build paths with `join`, which produces backslashes, and a
+ * backslash is not a separator to git. Translating is friendlier than refusing
+ * and cannot mean anything else here: the character is not legal in a path
+ * segment on the platform that produces it.
+ */
+function normalizeIgnorePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+/** Why `path` cannot be excluded, or undefined when it can. */
+function ignorePathFault(path: string): string | undefined {
+  if (path === '') return 'a path to leave alone may not be empty';
+  if (path.length > MAX_PATH_LENGTH) {
+    return 'a path to leave alone is at most ' + MAX_PATH_LENGTH + ' characters';
+  }
+  if (!/^[A-Za-z0-9._][A-Za-z0-9._/-]*$/.test(path)) {
+    return (
+      'a path to leave alone is repository-relative: letters, digits, . _ - ' +
+      'and / , starting at a letter, a digit, a dot or an underscore'
+    );
+  }
+  if (path.includes('..')) return 'a path to leave alone may not contain ".."';
+  if (path.includes('//')) return 'a path to leave alone may not contain "//"';
+  return undefined;
+}
+
+/**
+ * Why a pathspec cannot be handed to git, or undefined when it can.
+ *
+ * The type is written over the finished pathspec rather than over the path
+ * inside it, because the finished pathspec is what git parses: a leading colon
+ * is magic, and a value that could introduce magic of its own is the whole risk
+ * this rule exists to remove. Two shapes are allowed and no others.
+ */
+function pathspecFault(spec: string): string | undefined {
+  if (spec === EVERYTHING) return undefined;
+  if (!spec.startsWith(EXCLUDE)) {
+    return 'a pathspec here is "' + EVERYTHING + '" or "' + EXCLUDE + '<path>"';
+  }
+  return ignorePathFault(spec.slice(EXCLUDE.length));
+}
+
+/**
+ * What the work tree commands are pointed at, given what the caller excludes.
+ *
+ * One producer, two callers — the cleanliness reading and the staging — because
+ * the two have to agree or the module is unsafe in both directions. A tree the
+ * check overlooks and the staging sweeps in would commit somebody's run state
+ * into their pull request; a tree the check counts and the staging skips would
+ * refuse to start and never say why. They are the same list because they are
+ * built here and nowhere else.
+ */
+function pathspecsFor(ctx: GitContext): string[] {
+  const ignored = (ctx.ignorePaths ?? []).map(normalizeIgnorePath);
+  for (const path of ignored) {
+    const fault = ignorePathFault(path);
+    if (fault !== undefined) {
+      throw new ConfigError(
+        [
+          'refusing to leave "' + printableValue(path) + '" alone',
+          '  ' + fault,
+        ].join('\n'),
+      );
+    }
+  }
+  return [EVERYTHING, ...ignored.map((path) => EXCLUDE + path)];
+}
+
 /**
  * The type of every hole in {@link GIT_COMMANDS}.
  *
@@ -367,9 +471,18 @@ export const VALUE_TYPES: Readonly<Record<string, (value: string) => string | un
     '<refspec>': refspecFault,
     '<message>': commitMessageFault,
     '<remote>': remoteFault,
+    '<pathspec...>': pathspecFault,
   });
 
-const PLACEHOLDER = /^<[a-z-]+>$/;
+/**
+ * A hole in a template, and whether it takes one value or a list of them.
+ *
+ * The trailing `...` is the only difference, and a list still becomes one whole
+ * argv element per item — the property that makes a value from an issue an
+ * argument rather than a command is not weakened by there being several.
+ */
+const PLACEHOLDER = /^<[a-z-]+(?:\.\.\.)?>$/;
+const REPEATED = /\.\.\.>$/;
 
 /* -------------------------------------------------------------------------- */
 /* Building an argument vector                                                 */
@@ -386,7 +499,7 @@ const PLACEHOLDER = /^<[a-z-]+>$/;
  */
 export function buildGitArgv(
   name: string,
-  values: Readonly<Record<string, string>> = {},
+  values: Readonly<Record<string, string | readonly string[]>> = {},
 ): string[] {
   if (!Object.prototype.hasOwnProperty.call(GIT_COMMANDS, name)) {
     throw new ConfigError(
@@ -417,10 +530,10 @@ export function buildGitArgv(
         ].join('\n'),
       );
     }
-    const value = Object.prototype.hasOwnProperty.call(values, element)
-      ? (values[element] as string)
+    const supplied = Object.prototype.hasOwnProperty.call(values, element)
+      ? values[element]
       : undefined;
-    if (value === undefined) {
+    if (supplied === undefined) {
       throw new ConfigError(
         [
           'refusing to run git ' + name + ' with a hole left open',
@@ -428,24 +541,49 @@ export function buildGitArgv(
         ].join('\n'),
       );
     }
-    // Before the declared type, because a NUL is not a bad value of some kind:
-    // it is the byte that ends an argument as the operating system reads it, so
-    // everything after it in the string would be handed to git as something
-    // nobody validated.
-    const fault = value.includes('\0')
-      ? 'an argument may not contain a NUL byte'
-      : check(value);
-    if (fault !== undefined) {
+
+    const repeated = REPEATED.test(element);
+    if (repeated !== Array.isArray(supplied)) {
       throw new ConfigError(
         [
-          'refusing to run git ' + name + ' with that ' + element,
-          '  ' + printableValue(value),
-          '  ' + fault,
+          'refusing to run git ' + name + ' with the wrong shape of ' + element,
+          '  ' + element + (repeated ? ' takes a list of values' : ' takes one value'),
         ].join('\n'),
       );
     }
+    const items = repeated ? (supplied as readonly string[]) : [supplied as string];
+    if (items.length === 0) {
+      throw new ConfigError(
+        [
+          'refusing to run git ' + name + ' with an empty ' + element,
+          '  a list of values with nothing in it is not an argument',
+        ].join('\n'),
+      );
+    }
+
+    for (const value of items) {
+      // Before the declared type, because a NUL is not a bad value of some
+      // kind: it is the byte that ends an argument as the operating system
+      // reads it, so everything after it in the string would be handed to git
+      // as something nobody validated.
+      const fault =
+        typeof value !== 'string'
+          ? 'an argument is a string'
+          : value.includes('\0')
+            ? 'an argument may not contain a NUL byte'
+            : check(value);
+      if (fault !== undefined) {
+        throw new ConfigError(
+          [
+            'refusing to run git ' + name + ' with that ' + element,
+            '  ' + printableValue(String(value)),
+            '  ' + fault,
+          ].join('\n'),
+        );
+      }
+      argv.push(value);
+    }
     used.add(element);
-    argv.push(value);
   }
 
   for (const key of Object.keys(values)) {
@@ -554,6 +692,26 @@ export interface GitContext {
   repo: RepoGuard;
   /** Ceiling on one git invocation; {@link DEFAULT_TIMEOUT_MS} when absent. */
   timeoutMs?: number;
+  /**
+   * Repository-relative paths whose contents are not the repository's work.
+   *
+   * Two things at once, and it has to be both or it is a bug either way: these
+   * paths do not make the work tree unclean ({@link assertCleanTree}) and they
+   * are never staged ({@link commitAll}). A runner that keeps its own state
+   * inside the checkout it is working in needs the first, or its own bookkeeping
+   * makes it refuse to start; it needs the second just as much, or that
+   * bookkeeping ships to somebody else's repository in a pull request.
+   *
+   * Which paths those are is the caller's business, not this module's. This file
+   * knows about git; the directory a product keeps its run state in is named by
+   * the product — `runs-store.ts` already exports the constant for it — and a
+   * git module that hard-coded one would be a git module that had to be edited
+   * when the product renamed a folder.
+   *
+   * Paths are relative to the work tree root, not to {@link GitContext.cwd}, so
+   * an exclusion means the same thing wherever the runner was started.
+   */
+  ignorePaths?: readonly string[];
 }
 
 /** One finished git invocation. */
@@ -641,11 +799,16 @@ function gitEnv(): NodeJS.ProcessEnv {
 function tryGit(
   ctx: GitContext,
   name: GitCommandName,
-  values: Readonly<Record<string, string>> = {},
+  values: Readonly<Record<string, string | readonly string[]>> = {},
 ): GitResult {
   const argv = buildGitArgv(name, values);
   if (NETWORK_COMMANDS.includes(name)) {
-    assertRunnerBranch(ctx.repo, pushedBranch(values['<refspec>'] ?? ''), 'push');
+    const refspec = values['<refspec>'];
+    assertRunnerBranch(
+      ctx.repo,
+      pushedBranch(typeof refspec === 'string' ? refspec : ''),
+      'push',
+    );
   }
   const result = spawnSync('git', argv, {
     cwd: ctx.cwd,
@@ -692,7 +855,7 @@ function tryGit(
 function runGit(
   ctx: GitContext,
   name: GitCommandName,
-  values: Readonly<Record<string, string>> = {},
+  values: Readonly<Record<string, string | readonly string[]>> = {},
   complaint?: string,
   notes: readonly string[] = [],
 ): GitResult {
@@ -1105,9 +1268,24 @@ export function parseStatus(text: string): Change[] {
   return changes;
 }
 
-/** Everything the work tree has that HEAD does not. */
+/**
+ * Everything the work tree has that HEAD does not, less what the caller
+ * excludes ({@link GitContext.ignorePaths}).
+ *
+ * The exclusion is git's, not a filter over the answer. Reading the whole tree
+ * and dropping rows afterwards would leave the staging side to make the same
+ * decision again, separately, and the two would eventually disagree; asking git
+ * the narrower question means both commands are pointed at the same paths by
+ * construction.
+ */
 export function workingTreeChanges(ctx: GitContext): Change[] {
-  return parseStatus(runGit(ctx, 'changes', {}, 'could not read the work tree').stdout);
+  const result = runGit(
+    ctx,
+    'changes',
+    { '<pathspec...>': pathspecsFor(ctx) },
+    'could not read the work tree',
+  );
+  return parseStatus(result.stdout);
 }
 
 /**
@@ -1418,7 +1596,14 @@ export interface CommitResult {
 }
 
 /**
- * Stages the whole work tree and commits it on the branch that is checked out.
+ * Stages the work tree and commits it on the branch that is checked out.
+ *
+ * "The work tree" means what {@link workingTreeChanges} just called the work
+ * tree, pointed at by the same pathspecs: whatever the caller excluded from the
+ * cleanliness reading is excluded from the commit as well. The pair matters
+ * more than either half. Letting a runner's own state directory sit in the tree
+ * without letting it into the commit is the point — the alternative is a pull
+ * request that ships one repository's bookkeeping into another's history.
  *
  * A tree with nothing in it is not a failure and not an empty commit: it
  * answers `committed: false` and lets the caller decide what a round that
@@ -1445,7 +1630,12 @@ export function commitAll(ctx: GitContext, message: string): CommitResult {
   const changes = workingTreeChanges(ctx);
   if (changes.length === 0) return { branch, committed: false, changes };
 
-  runGit(ctx, 'stageAll', {}, 'could not stage the work tree');
+  runGit(
+    ctx,
+    'stageAll',
+    { '<pathspec...>': pathspecsFor(ctx) },
+    'could not stage the work tree',
+  );
   runGit(
     ctx,
     'commit',

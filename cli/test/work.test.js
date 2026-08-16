@@ -288,14 +288,16 @@ const STANDARDS = [
  * before `get-url` answers, so a checkout dressed up that way reports the local
  * path anyway. This reports what it really is.
  */
-function checkout({ standards = true, owner = 'cli', name = 'cli' } = {}) {
+function checkout({ standards = true, owner = 'cli', name = 'cli', gitignore = true } = {}) {
   const bare = join(temp('work-remote-'), owner, name + '.git');
   const work = temp('work-repo-');
   mkdirSync(bare, { recursive: true });
   git(['init', '--bare'], bare);
   git(['init'], work);
   git(['symbolic-ref', 'HEAD', 'refs/heads/trunk'], work);
-  writeFileSync(join(work, '.gitignore'), GITIGNORE, 'utf8');
+  // A fresh adopter has no ignore rules at all — which is the case every
+  // fixture here used to hide, and the one a live pass fell over on.
+  if (gitignore) writeFileSync(join(work, '.gitignore'), GITIGNORE, 'utf8');
   mkdirSync(join(work, 'docs'), { recursive: true });
   writeFileSync(join(work, 'docs', 'bar.txt'), 'the shape a page is judged against\n', 'utf8');
   if (standards) {
@@ -1349,6 +1351,94 @@ test('an unclean work tree is refused before a single request is made', async ()
   assert.deepEqual(fake.labelsOf('cli', 'cli', 801), [READY, 'bug']);
   assert.deepEqual(fake.commentsOn('cli', 'cli', 801), []);
   assert.deepEqual(runDirs(cwd), []);
+});
+
+/*
+ * The first pass a fresh adopter ever runs.
+ *
+ * A repository with no `.gitignore` is the ordinary starting point, and the
+ * runner writes its own state *inside* that repository — the snapshot, the pin,
+ * the progress page. Every fixture here carried an ignore rule that already
+ * excluded it, so 1042 tests never saw what a live pass hit immediately: the
+ * state directory made the tree unclean, and the cleanliness check refused. It
+ * refused *after* the claim, too, because the directory only exists once the
+ * snapshot has been written — so the issue was left blocked by the runner's own
+ * bookkeeping.
+ */
+test('R1: a repository with no .gitignore is worked, and its state stays out of the commit', async () => {
+  const fake = await threeIssues();
+  const { work: cwd, bare } = checkout({ gitignore: false });
+  assert.ok(!existsSync(join(cwd, '.gitignore')), 'the fixture is meant to have no ignore rules');
+
+  const result = await work(fake, ['--repo', 'cli/cli', '--plugin-dir', REPO_ROOT], {
+    cwd,
+    phases: [winningPhase('src/adopter.txt')],
+  });
+
+  // It completes — which means neither the startup check nor the one before the
+  // branch was cut ever saw the runner's own directory.
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.ok(
+    !/uncommitted changes/.test(result.stdout + result.stderr),
+    'the runner was refused by its own state:\n' + result.stdout + result.stderr,
+  );
+  assert.deepEqual(fake.labelsOf('cli', 'cli', 801), ['bug', REVIEW]);
+  assert.equal(fake.pullsOpened().length, 1);
+
+  // The state really is there, untracked and unignored: the premise holds.
+  assert.ok(existsSync(join(cwd, '.exolvra-genesis', 'runs')), 'no run state was written');
+
+  // And none of it is in what the merge proposes.
+  const branch = fake.pullsOpened()[0].head;
+  const proposed = git(['diff', '--name-only', 'trunk...' + branch], bare)
+    .trim()
+    .split(NL)
+    .filter((line) => line !== '');
+  assert.deepEqual(proposed, ['src/adopter.txt'], 'the runner shipped its own bookkeeping');
+
+  // Said of the commit itself as well as of the diff, because the two are
+  // different questions and the staging is what answers this one.
+  const committed = git(['show', '--name-only', '--format=', branch], bare)
+    .trim()
+    .split(NL)
+    .filter((line) => line !== '');
+  assert.deepEqual(committed, ['src/adopter.txt']);
+  for (const path of [...proposed, ...committed]) {
+    assert.ok(!path.startsWith('.exolvra-genesis'), 'run state was staged: ' + path);
+  }
+  // The body lists the one file and no run state. It still *names* the snapshot
+  // in its Spec row, which is the point of that row — what must not appear is a
+  // run-state path among the files a merge would bring in.
+  const body = fake.pullsOpened()[0].body;
+  assert.match(body, /- `src\/adopter\.txt` — added/);
+  assert.match(body, /<summary>Files changed \(1 file\)<\/summary>/);
+  assert.doesNotMatch(body, /- `\.exolvra-genesis[^`]*` — /, 'run state is listed as a change');
+});
+
+test('R1: a genuinely dirty tree still refuses, naming only the real change', async () => {
+  const fake = await threeIssues();
+  const { work: cwd } = checkout({ gitignore: false });
+
+  // State left by an earlier pass, which is not the repository's work…
+  mkdirSync(join(cwd, '.exolvra-genesis', 'runs', 'r-earlier'), { recursive: true });
+  writeFileSync(join(cwd, '.exolvra-genesis', 'runs.json'), '[]\n', 'utf8');
+  writeFileSync(join(cwd, '.exolvra-genesis', 'progress.html'), PAGE, 'utf8');
+  writeFileSync(join(cwd, '.exolvra-genesis', 'runs', 'r-earlier', 'issue.md'), 'old\n', 'utf8');
+  // …and an edit somebody left behind, which is.
+  writeFileSync(join(cwd, 'docs', 'bar.txt'), 'a change somebody was midway through\n', 'utf8');
+
+  const result = await work(fake, ['--repo', 'cli/cli'], { cwd });
+
+  assert.equal(result.code, 2, result.stdout + result.stderr);
+  assert.match(result.stderr, /refusing to start on a work tree with uncommitted changes/);
+  assert.match(result.stderr, /docs\/bar\.txt/);
+  // The exclusion is not a blindfold: it hides the runner's own directory and
+  // nothing else, so the refusal names what a person actually has to settle.
+  assert.ok(
+    !result.stderr.includes('.exolvra-genesis'),
+    'the refusal blamed the runner’s own state:\n' + result.stderr,
+  );
+  assert.deepEqual(fake.requests, [], 'a doomed pass still reached GitHub');
 });
 
 test('a detached HEAD is refused before a single request, and names the fix', async () => {
