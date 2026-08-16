@@ -65,7 +65,7 @@ env:
   # release never changes what a scheduled pass does without you saying so.
   # 0.8.0 is the release the runner arrives in; anything earlier has no `work`
   # command and answers this workflow with "unknown command".
-  EXOLVRA_GENESIS_VERSION: '0.8.0'
+  EXOLVRA_GENESIS_VERSION: '0.8.1'
   # The cost cap, in US dollars, for one issue.
   MAX_COST: '5'
 

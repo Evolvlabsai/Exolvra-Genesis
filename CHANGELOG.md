@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1 — 2026-08-16
+
+- The npm package carries a README. The package page was blank because the
+  repository's README lives above the package root; `cli/README.md` now
+  ships with install, quickstart, the issue runner's safety rules, and the
+  exit-code contract. No code changed.
+
 ## 0.8.0 — 2026-08-15
 
 - The GitHub issue runner. `exolvra-genesis work` makes one unattended pass:
