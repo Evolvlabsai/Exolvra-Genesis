@@ -18,6 +18,15 @@ Rules:
   round.
 - Run the spec's verification command yourself before reporting. If you can't
   make it pass, say so plainly.
+- While iterating, run the narrowest checks that cover your owned files; run
+  the spec's full verification once, when you believe you are done. The lead
+  re-runs it anyway, and repeated full runs under parallel builders tear the
+  shared build output.
+- A fix states the invariant it enforces, and pins that invariant as a test
+  beside the branch that depends on it. A comment that asserts another
+  module's or function's behaviour is a premise that rots when that code
+  changes: either pin it with a test that fails when the premise dies, or
+  rewrite it to claim only what the local code does.
 - If you are blocked by something outside your owned files or missing from the
   spec, stop and report BLOCKED with the reason and exactly what you need.
 

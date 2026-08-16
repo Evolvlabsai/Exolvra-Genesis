@@ -93,7 +93,12 @@ some piece. For each piece, write a Task Spec:
 - **Goal** — one self-contained paragraph.
 - **Covers** — when running from a spec, the requirement(s) this piece
   satisfies.
-- **Acceptance criteria** — checkable, not aspirational.
+- **Acceptance criteria** — checkable, not aspirational. For a piece that
+  talks to another system — a network, a process, a service — include the
+  fault matrix: each stage crossed with each fault kind, and the exit code,
+  state, and message each pair must produce. Failure paths found by critics
+  late are the most expensive class of round; a matrix written here is pinned
+  by the builder instead.
 - **Files owned** — disjoint from every other piece running in parallel.
 - **Verification command** — the exact command whose output proves the
   criteria.
@@ -113,7 +118,11 @@ user had replied "go".
 On "go", for each piece:
 
 1. Fan out a `exolvra-genesis-builder` subagent with its Task Spec. Pieces with
-   disjoint file ownership run in parallel.
+   disjoint file ownership run in parallel — but parallel builders sharing one
+   build output must not run the full build or suite concurrently: their Task
+   Specs scope iteration to their owned checks, and you run the full gate
+   yourself at each checkpoint. Torn concurrent builds produce phantom
+   failures that cost real rounds.
 2. A builder's report is a claim, not a result. Re-run its verification
    command yourself before the round proceeds. Missing verification output, or
    output that doesn't match the report, is an automatic LOSS — back to a
@@ -122,14 +131,21 @@ On "go", for each piece:
    prior rounds — to a fresh `exolvra-genesis-critic` subagent, working from a
    temporary directory containing copies, never inside the repo. Shuffle the
    A/B labels whenever the medium allows.
-4. On LOSS, send the critic's single biggest gap back to a builder for another
-   round, with a fresh critic every round.
+4. On LOSS, send the critic's findings — batched and ranked, not one at a
+   time — back to a builder for another round, with a fresh critic every
+   round. One finding per round costs a round per finding.
 
 Loop rules:
 
 - If the same gap survives two rounds, change the approach — new strategy, new
   decomposition, or race two builders on rival approaches — instead of
   polishing.
+- If two consecutive fixes each break a property the other round established —
+  the see-saw — stop patching: the design or the spec is wrong, and no round
+  of the loop will fix it. Questioning the spec is a legitimate move. Propose
+  the amendment to the user (in an auto run, make it and say so plainly),
+  record it as an addendum, re-pin the spec's sha256, and continue on the
+  amended contract.
 - Every few rounds, run the whole assembled result through the Exolvra Genesis loop, not
   just the pieces, and re-check previously won pieces for regressions after
   integration.

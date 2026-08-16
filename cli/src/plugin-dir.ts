@@ -17,6 +17,7 @@ export interface PluginSources {
   builderMd: string;
   criticMd: string;
   progressHtml: string;
+  fleetHtml: string;
   dir: string;
 }
 
@@ -24,10 +25,14 @@ export interface PluginSources {
  * Paths, relative to the plugin directory, of the files that must be present.
  *
  * Every file the CLI uses is loaded from here, and all of them are required
- * everywhere. The package ships all five, so a directory missing any of them is
+ * everywhere. The package ships every one of them, so a directory missing any is
  * a broken install rather than a supported shape — and finding that out at the
  * first command is better than finding it out at the one command that happens
  * to need the missing one.
+ *
+ * The build copies exactly this list into the package, so a file added here is
+ * a file that ships; one added anywhere else is a file an installed package
+ * would not have.
  */
 export const PLUGIN_FILES = {
   runMd: 'commands/run.md',
@@ -35,6 +40,7 @@ export const PLUGIN_FILES = {
   builderMd: 'agents/builder.md',
   criticMd: 'agents/critic.md',
   progressHtml: 'templates/progress.html',
+  fleetHtml: 'templates/fleet.html',
 } as const;
 
 /**
@@ -153,6 +159,7 @@ export function loadPluginSources(
         builderMd: readPluginFile(dir, PLUGIN_FILES.builderMd),
         criticMd: readPluginFile(dir, PLUGIN_FILES.criticMd),
         progressHtml: readPluginFile(dir, PLUGIN_FILES.progressHtml),
+        fleetHtml: readPluginFile(dir, PLUGIN_FILES.fleetHtml),
       };
     }
     misses.push(`  ${dir} (${unusable})`);

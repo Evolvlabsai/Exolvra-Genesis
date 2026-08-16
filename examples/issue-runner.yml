@@ -1,0 +1,130 @@
+# Exolvra Genesis — one scheduled pass over this repository's ready issues.
+#
+# Copy this file to .github/workflows/exolvra-genesis.yml. Four things make it
+# work, and nothing else does:
+#
+#   1. Add ANTHROPIC_API_KEY to Settings -> Secrets and variables -> Actions.
+#   2. Label an issue `exolvra:ready`. Applying that label is the whole
+#      authorization: an issue without it is never picked up, and neither is a
+#      repository other than this one.
+#   3. Set MAX_COST below to what one issue is worth to you. It is a hard cap,
+#      not a target — a pass that reaches it stops the issue and says so.
+#   4. Make the issue checkable, or it is triaged instead of worked: a checklist
+#      of outcomes (`- [ ]` items, or an "Acceptance criteria" heading) and a
+#      command that verifies them. The command comes from the issue body — a
+#      fenced `sh` block, or a `Verification: <command>` line — or from a
+#      `.exolvra-genesis/standards.md` committed here, and from nowhere else: a
+#      command in a comment is a stranger's command. Note that a command inside
+#      a checklist item is read as part of the outcome, not as the way to run
+#      it. The triage comment names exactly what is missing and how to fix it.
+#
+# What a pass does: claims one ready issue, works it against the repository's
+# own standards, and opens a pull request — ready for review when the work won,
+# a draft carrying the reason when it stopped short, since a branch you can look
+# at beats one that was thrown away. It never merges, approves, or closes
+# anything, it never pushes to a default or protected branch, and it touches no
+# label outside the `exolvra:` namespace. Every merge decision stays yours.
+#
+# One line further down will look odd, and is already filled in correctly:
+# EXOLVRA_GENESIS_RUNNER_LOGIN. The runner keeps one status comment per issue
+# and edits it as it goes, so it has to be able to tell its own comments from
+# everybody else's — and an Actions token cannot introduce itself, because
+# GitHub will not say which account it belongs to. Naming the account is how
+# somebody with access to this repository says it instead. Change it only if
+# you change the token it sits next to.
+
+name: Exolvra Genesis
+
+on:
+  schedule:
+    # Weekdays at 07:15 UTC. Cron is the whole scheduler: the CLI makes one
+    # pass and exits, so there is no daemon to keep alive or to restart.
+    - cron: '15 7 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Work one issue now, as a number or an issue URL'
+        required: false
+        type: string
+
+# Least privilege: the ceiling for GITHUB_TOKEN in every job below, and the
+# whole of what a pass needs. No `actions:`, no `packages:`, no `id-token:`.
+permissions:
+  contents: write # push the one branch the work is on
+  issues: write # move the exolvra: labels, edit the one sticky comment
+  pull-requests: write # open the pull request
+
+concurrency:
+  # One pass at a time. Two passes would race each other for the same claim,
+  # and the loser would find the label already moved and skip the issue.
+  group: exolvra-genesis
+  cancel-in-progress: false
+
+env:
+  # Bump this when you want a newer loop. Pinned rather than floating, so a
+  # release never changes what a scheduled pass does without you saying so.
+  # 0.8.0 is the release the runner arrives in; anything earlier has no `work`
+  # command and answers this workflow with "unknown command".
+  EXOLVRA_GENESIS_VERSION: '0.8.0'
+  # The cost cap, in US dollars, for one issue.
+  MAX_COST: '5'
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # Pinned to a release tag. A commit SHA is stricter still — replace the
+      # tag with the SHA and keep the tag in a trailing comment — and either
+      # beats a floating major, which is a version somebody else can change.
+      - name: Check out the repository
+        uses: actions/checkout@v4.2.2
+        with:
+          # Full history: the loop reads what the repository already does
+          # before it writes anything that has to match.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: '22'
+
+      # Whatever your verification command needs, install it here. The loop
+      # runs your tests, and a builder that cannot run them cannot win — so an
+      # empty toolchain is a pass that blocks every issue it touches. This one
+      # runs only where there is an npm lockfile, so a repository that builds
+      # some other way skips it instead of failing on it.
+      - name: Install the project's toolchain
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+
+      - name: Work one ready issue
+        env:
+          # The model credential. Nothing in the run ever prints it, and it is
+          # never written to a comment, a pull request body, or a run record.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The repository credential, minted per run by Actions and scoped by
+          # the permissions block above. No personal access token is needed.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Who that credential is. GitHub will not tell the runner, so the
+          # runner is told here: the token above signs its comments as
+          # github-actions[bot], and knowing that is what lets a pass recognise
+          # the status comment it edits each round rather than trusting whoever
+          # wrote the last one. Swap the token for a personal access token and
+          # this line goes: a user token can introduce itself.
+          EXOLVRA_GENESIS_RUNNER_LOGIN: 'github-actions[bot]'
+          # Read into a variable rather than interpolated into the script: a
+          # dispatch input is text somebody typed, and text somebody typed does
+          # not belong in a command line.
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          args=(work --repo "$GITHUB_REPOSITORY" --max-cost "$MAX_COST")
+          if [ -n "$ISSUE" ]; then args+=("$ISSUE"); fi
+          npx --yes "exolvra-genesis@$EXOLVRA_GENESIS_VERSION" "${args[@]}"
+        # Exit codes, so a red run means something: 0 is every issue reaching a
+        # pull request or a clean triage, 1 is at least one blocked or stopped
+        # by the cost cap — a human decision waiting, not a broken workflow —
+        # and 2 is configuration: no credential, no repository allowlisted, or
+        # no login for a token that cannot name itself. A 2 is always something
+        # in this file, and it is reported before any issue is touched.

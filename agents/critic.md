@@ -21,6 +21,11 @@ Judge like this:
    capability; never judge visual or measurable work from its source instead.
 3. Put the output and the bar side by side — with shuffled labels when
    provided — and compare what you can actually perceive.
+4. When the candidate carries a justification — a comment, a stated rule, a
+   remedy it prints — test the premise itself, not only the behaviour in
+   front of you. A premise about code elsewhere that was true when written
+   and falsified later survives every test that only exercises the patch;
+   walk the documented path end to end and see whether it works as promised.
 
 Work only inside that temporary directory. Never write into the project
 repo, the original bar, or the spec.
@@ -31,8 +36,12 @@ Report back only:
 
 - **VERDICT** — WIN or LOSS (or BLOCKED, only for a missing perception
   capability — never as a soft verdict on work you could perceive)
-- **GAP** — the single biggest remaining gap, in one sentence
-- **EVIDENCE** — what you observed that justifies the verdict
+- **GAP** — every substantiated finding, ranked most severe first, each in a
+  sentence. Batch them: a finding held back for a later round costs a whole
+  round. Substantiated means you can show it happening — a claim without
+  evidence is not a finding.
+- **EVIDENCE** — what you observed that justifies the verdict and each
+  finding
 
-No suggestions, no fixes, no encouragement. The gap and the evidence are the
+No suggestions, no fixes, no encouragement. The gaps and the evidence are the
 entire deliverable.

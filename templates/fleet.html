@@ -1,0 +1,316 @@
+<!doctype html>
+<!--
+  EXOLVRA_GENESIS FLEET TEMPLATE
+  =============================
+  WRITER: replace ONLY the JSON between the BEGIN and END markers below. They
+  are HTML comments wrapping this template's data block — the element with the
+  id exolvra-genesis-data — and each appears exactly once in this file, so
+  splicing between them can swallow nothing else. Match the markers, never a
+  tag: an opening-tag pattern would also match prose about one. Never edit the
+  markup, styles, or renderer — that is what keeps this page identical for
+  every user of the plugin. Escape any "</" inside JSON string values as "<\/".
+  In the note string, `backticks` render as inline code; everything else is
+  plain text.
+
+  This is the per-repository progress page's sibling: one page per run there,
+  one page for every run here. Same variables, same panel, same table, same
+  status words, so a reader moving between them is reading one design.
+
+  JSON contract (all fields optional unless noted; omit what a pass doesn't
+  have):
+  {
+    "generated": string,                 // required — ISO 8601 UTC, to the second
+    "repos":  [ string ],                // the allowlist the pass ran against
+    "note":   string,                    // one line under the table
+    "runs": [
+      { "repo":    string,               // required — owner/name
+        "issue":   number,               // required — the issue number
+        "title":   string,
+        "status":  "ready"|"working"|"review"|"blocked"|"triage",
+        "round":   number,               // rounds judged so far; null when none
+        "verdict": string,               // the last verdict reached; null when none
+        "costUsd": number,               // budget consumed, in US dollars
+        "pr":      string,               // pull request URL; null until one is open
+        "url":     string,               // the issue page
+        "updated": string }              // ISO 8601, when the issue last moved
+    ]
+  }
+
+  A fleet of no runs draws the empty state and nothing else. Every column is
+  drawn for every row: a run that has not reached a round yet shows an em dash
+  there rather than dropping the cell, so one row is never read against the
+  wrong heading.
+
+  Every string above is issue text or run text, which is to say it was written
+  by somebody else. The writer flattens it to one line, removes the characters
+  that reorder one, and replaces anything shaped like a credential before it
+  reaches this block — this page is screenshotted and pasted, and that is how a
+  token that leaked once leaks twice. The renderer below writes every value with
+  textContent and turns only https github.com URLs into links, so a value cannot
+  become markup here either.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="20">
+<title>Exolvra Genesis — issue fleet</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #fff; --ink: #1a1a19; --muted: #6b6a66;
+    --line: #e5e2dc; --win: #1a7f52; --loss: #b4341f; --pend: #8a8880;
+    --run: #b8761f; --accent: #3b3a37;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16161a; --panel: #1d1d22; --ink: #e9e8e4; --muted: #97968f;
+      --line: #2e2e35; --win: #4bbd85; --loss: #ef6a4f; --pend: #74736d;
+      --run: #e0a24a; --accent: #cfcec8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 24px 64px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 26px; }
+  h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em;
+       color: var(--muted); margin: 34px 0 12px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13.5px; }
+  .status { display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: 0.08em;
+    padding: 5px 9px; border-radius: 4px; text-transform: uppercase; border: 1px solid currentColor; }
+  .s-working { color: var(--run); }
+  .s-queued, .s-idle, .s-ready, .s-triage { color: var(--pend); }
+  .s-review { color: var(--win); }
+  .s-blocked { color: var(--loss); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+       color: var(--muted); font-weight: 600; padding: 0 12px 9px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 12px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .id { font: 600 13px var(--mono); }
+  .repo { font: 12.5px var(--mono); color: var(--muted); white-space: nowrap; }
+  .num { font: 12.5px var(--mono); color: var(--muted); text-align: right; white-space: nowrap; }
+  .v { font: 600 11px/1 var(--mono); letter-spacing: 0.06em; }
+  .v-win { color: var(--win); } .v-loss { color: var(--loss); }
+  .v-pending { color: var(--pend); } .v-building { color: var(--run); }
+  .gap { color: var(--muted); font-size: 13px; }
+  .empty { color: var(--muted); font-size: 13.5px; font-style: italic; padding: 6px 0; }
+  .when { font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; }
+  a { color: inherit; }
+  a.pr { font: 12.5px var(--mono); color: var(--accent); white-space: nowrap; }
+  .repolist { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 2px 0; }
+  .repolist code { font: 12px var(--mono); color: var(--accent); }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 12.5px; }
+  .fmt code { font: 12px var(--mono); color: var(--accent); }
+  .note { border-left: 3px solid var(--win); padding-left: 13px; margin-top: 14px;
+          color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- EXOLVRA-GENESIS-DATA-BEGIN -->
+<script id="exolvra-genesis-data" type="application/json">
+{
+  "generated": "",
+  "repos": [],
+  "runs": []
+}
+</script>
+<!-- EXOLVRA-GENESIS-DATA-END -->
+
+<header>
+  <h1 id="title">Exolvra Genesis — issue fleet</h1>
+  <div class="sub"><span class="status" id="status"></span>&nbsp; <span id="subline"></span></div>
+</header>
+
+<h2>Allowlisted repositories</h2>
+<div class="panel" id="repos"></div>
+
+<h2>Issue runs</h2>
+<div class="panel" id="fleet"></div>
+
+<footer id="foot"></footer>
+
+</div>
+<script>
+(function () {
+  var d;
+  try { d = JSON.parse(document.getElementById('exolvra-genesis-data').textContent); }
+  catch (e) {
+    document.body.insertAdjacentText('beforeend',
+      'Fleet data is not valid JSON - the writer should fix the #exolvra-genesis-data block.');
+    return;
+  }
+  var TICK = '\u0060';
+  var DASH = '—';
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  // `backticks` -> inline code; everything else stays plain text
+  function fmt(s) {
+    var frag = document.createDocumentFragment();
+    String(s == null ? '' : s).split(TICK).forEach(function (part, i) {
+      if (i % 2 === 1) frag.appendChild(el('code', null, part));
+      else if (part) frag.appendChild(document.createTextNode(part));
+    });
+    var span = el('span', 'fmt'); span.appendChild(frag); return span;
+  }
+  // A verdict, read exactly as the progress page reads one. This function is
+  // that page's, character for character, and it stays that way: a verdict is
+  // the one word on either page that a reader scans for, and two pages that
+  // colour it differently are two designs however alike the rest of them looks.
+  function vclass(s) {
+    if (s === 'win' || s === 'won') return 'v v-win';
+    if (s === 'loss' || s === 'blocked') return 'v v-loss';
+    if (s === 'building' || s === 'judging') return 'v v-building';
+    return 'v v-pending';
+  }
+  // A lifecycle state is a different vocabulary and gets its own colours, the
+  // ones the status pill above the table already uses. It deliberately does not
+  // borrow the verdict classes: `blocked` means "a person has to decide" here
+  // and "this round lost" there, and one palette saying both would make the
+  // column that matters unreadable.
+  var STATES = ['ready', 'working', 'review', 'blocked', 'triage'];
+  function sclass(s) {
+    return 'v ' + (STATES.indexOf(s) === -1 ? 's-ready' : 's-' + s);
+  }
+  // A verdict split into the word and the reason after it.
+  //
+  // The runs store keeps one string - "LOSS - the table is ragged" - because
+  // that is what a round reports. The progress page is handed the two halves
+  // separately and draws them in two cells; this page is handed them joined, so
+  // it separates them here rather than drawing a whole sentence in one colour.
+  // A verdict opening with no word this knows is not guessed at: it is shown as
+  // the reason, and the colour is left alone.
+  var VERDICT_WORD = /^(win|won|loss|lost|blocked|pending|judging|building)\b[\s:.,;()–—-]*/i;
+  function verdictParts(s) {
+    var text = String(s == null ? '' : s).trim();
+    if (!text) return null;
+    var m = text.match(VERDICT_WORD);
+    if (!m) return { word: '', rest: text };
+    var word = m[1].toLowerCase();
+    if (word === 'lost') word = 'loss';
+    return { word: word, rest: text.slice(m[0].length) };
+  }
+  // Only a link this page can hand to a browser, and only to GitHub over https.
+  // A URL is a field like any other, and a field came from somewhere.
+  function link(url, label, cls) {
+    var safe = /^https:\/\/([a-z0-9-]+\.)*github\.com\//i.test(String(url || ''));
+    if (!safe) return el('span', cls, label);
+    var a = el('a', cls, label);
+    a.href = url; a.rel = 'noreferrer noopener';
+    return a;
+  }
+  function money(n) {
+    return typeof n === 'number' && isFinite(n) ? '$' + n.toFixed(2) : DASH;
+  }
+
+  var runs = (d.runs || []).filter(function (r) { return r && r.repo && r.issue != null; });
+
+  // Header: the pill is the loudest state anything in the fleet is in
+  var order = ['blocked', 'working', 'review', 'ready', 'triage'];
+  var pill = 'idle';
+  for (var i = 0; i < order.length; i++) {
+    var found = runs.some(function (r) { return r.status === order[i]; });
+    if (found) { pill = order[i] === 'ready' || order[i] === 'triage' ? 'queued' : order[i]; break; }
+  }
+  var st = document.getElementById('status');
+  st.textContent = pill;
+  st.className = 'status s-' + pill;
+
+  var bits = [];
+  bits.push(runs.length + (runs.length === 1 ? ' issue run' : ' issue runs'));
+  var repos = (d.repos || []).filter(function (r) { return !!r; });
+  bits.push(repos.length + (repos.length === 1 ? ' repository' : ' repositories'));
+  if (d.generated) bits.push('generated ' + d.generated);
+  document.getElementById('subline').textContent = bits.join('  ·  ');
+
+  // The allowlist, said out loud: nothing outside it was looked at
+  var reposEl = document.getElementById('repos');
+  if (!repos.length) {
+    reposEl.appendChild(el('div', 'empty',
+      'No repository was allowlisted, so nothing was eligible.'));
+  } else {
+    var list = el('div', 'repolist');
+    repos.forEach(function (r) { list.appendChild(el('code', null, r)); });
+    reposEl.appendChild(list);
+  }
+
+  // The fleet
+  var fleet = document.getElementById('fleet');
+  if (!runs.length) {
+    fleet.appendChild(el('div', 'empty',
+      'Nothing claimed or queued yet ' + DASH + ' a run lands here once an issue carries the ready label.'));
+  } else {
+    var t = el('table'), th = el('thead'), tr = el('tr');
+    // Title and Verdict are the two elastic columns: everything else is as
+    // wide as the value it holds, and those two share what is left.
+    [['Repo', 128], ['Issue', 62], ['Title', 0], ['Status', 78],
+     ['Round', 56], ['Verdict', 0], ['Budget', 70], ['PR', 56]]
+      .forEach(function (h) {
+        var cell = el('th', null, h[0]);
+        if (h[1]) cell.style.width = h[1] + 'px';
+        tr.appendChild(cell);
+      });
+    th.appendChild(tr); t.appendChild(th);
+    var tb = el('tbody');
+    runs.forEach(function (r) {
+      var row = el('tr');
+      row.appendChild(el('td', 'repo', r.repo));
+      var num = el('td', 'id');
+      num.appendChild(link(r.url, '#' + r.issue, 'id'));
+      row.appendChild(num);
+      var nm = el('td');
+      nm.appendChild(fmt(r.title || ''));
+      if (r.updated) { var w = el('div', 'when', r.updated); nm.appendChild(w); }
+      row.appendChild(nm);
+      row.appendChild(el('td', sclass(r.status), String(r.status || 'ready').toUpperCase()));
+      row.appendChild(el('td', 'num', r.round == null ? DASH : String(r.round)));
+      // The verdict, drawn the way the progress page draws one: the word in the
+      // verdict colours, uppercase, in the bold mono the pieces table uses, with
+      // the reason under it in the muted style that page gives a gap.
+      var vd = el('td');
+      var parts = verdictParts(r.verdict);
+      if (parts === null) {
+        vd.appendChild(el('span', 'num', DASH));
+      } else {
+        if (parts.word) vd.appendChild(el('div', vclass(parts.word), parts.word.toUpperCase()));
+        if (parts.rest) {
+          var reason = el('div', 'gap');
+          reason.appendChild(fmt(parts.rest));
+          vd.appendChild(reason);
+        }
+      }
+      row.appendChild(vd);
+      row.appendChild(el('td', 'num', money(r.costUsd)));
+      var pr = el('td');
+      if (r.pr) pr.appendChild(link(r.pr, 'open', 'pr'));
+      else pr.appendChild(el('span', 'num', DASH));
+      row.appendChild(pr);
+      tb.appendChild(row);
+    });
+    t.appendChild(tb); fleet.appendChild(t);
+  }
+  if (d.note) {
+    var n = el('div', 'note');
+    n.appendChild(fmt(d.note));
+    fleet.appendChild(n);
+  }
+
+  // Footer
+  document.getElementById('foot').appendChild(document.createTextNode(
+    'Per-run pages under .exolvra-genesis/runs/. Humans keep every merge decision. Refreshes every 20s.'));
+})();
+</script>
+</body>
+</html>

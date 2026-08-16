@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.8.0 — 2026-08-15
+
+- The GitHub issue runner. `exolvra-genesis work` makes one unattended pass:
+  it scans allowlisted repos for issues labelled `exolvra:ready` (a
+  maintainer's act, never the tool's), claims one within the WIP cap, runs
+  the loop against the issue as the spec and the repo's standards as the
+  standing bar, and ends with evidence — a pull request and `exolvra:review`
+  on a win, a draft PR with the open question on a block, a triage comment
+  naming exactly what is missing when no checkable criteria can be derived.
+  Humans keep every merge decision. `queue` lists eligible and in-flight
+  issues; `.exolvra-genesis/fleet.html` shows the fleet on one page;
+  `examples/issue-runner.yml` is the copy-one-file GitHub Actions adoption
+  path.
+- Every write requires a resolvable identity. The runner resolves its own
+  login once per run; a token GitHub refuses `GET /user` (installation and
+  Actions tokens) must have its account named by the operator —
+  `--runner-login <login>` or `EXOLVRA_GENESIS_RUNNER_LOGIN` — or the run
+  exits 2 at startup, before any issue is read. This replaced a degraded
+  mode in which every claim decision rested on comments any stranger could
+  author; eight adversarial review passes showed that mode could not be made
+  safe, so it was deleted rather than patched again. Read-only surfaces
+  (`queue`, `work --dry-run`, the fleet page) need no identity.
+- Safety as mechanisms, judged adversarially: one module owns all GitHub
+  traffic (a planted `fetch` anywhere else fails the suite) and never leaks
+  the token into any error, artifact, or page; one module owns git, with
+  force-push structurally absent and pushes confined to the
+  `exolvra-genesis/issue-…` namespace; issue content is data, never
+  instructions — commands are derived only from the issue's own checkable
+  text, hostile markup and bidi controls are neutralized in everything
+  written back, and secrets pasted into issues render `[redacted]`
+  everywhere. Twenty-five findings from eight blind write-safety passes and
+  an assembled-artifact round, each fixed and re-verified by replay.
+- Charting is specced (`docs/specs/chart-spec.md`, folded into this effort's
+  spec as addendum v0.1.1) and lands in a later release.
+
 ## 0.7.0 — 2026-08-14
 
 - Repo-owned standards. A repo declares its standing quality bar in

@@ -336,10 +336,12 @@ test('an unknown command exits 2 with a gh-shaped error naming what exists', () 
     '  goals',
     '  interview',
     '  plan',
+    '  queue',
     '  resume',
     '  run',
     '  runs',
     '  standards',
+    '  work',
   ]);
 
   // And the pin is the registry's own list, in the registry's own order, so

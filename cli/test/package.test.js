@@ -131,6 +131,8 @@ test('the published package carries the plugin markdown and loads it', () => {
     'dist/plugin/commands/run.md',
     'dist/plugin/agents/builder.md',
     'dist/plugin/agents/critic.md',
+    'dist/plugin/templates/progress.html',
+    'dist/plugin/templates/fleet.html',
   ]) {
     assert.ok(
       files.includes(relative),

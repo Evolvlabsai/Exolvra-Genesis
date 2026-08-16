@@ -891,11 +891,12 @@ test('only the commands that declare it may succeed having printed nothing', asy
     .map((command) => command.name);
   // Exact, and deliberately not a rule about names: the exemption belongs to a
   // command whose job is to list what is there, because a listing of nothing is
-  // a complete listing. Both of these are one — the run ledger and the repo's
-  // named goals — and a third has to be added here, by hand, to join them.
+  // a complete listing. Each of these is one — the repo's named goals, the
+  // issues waiting to be worked, and the run ledger — and another has to be
+  // added here, by hand, to join them.
   assert.deepEqual(
     exempt,
-    ['goals', 'runs'],
+    ['goals', 'queue', 'runs'],
     'the exemption spread beyond the commands whose job is to list',
   );
 

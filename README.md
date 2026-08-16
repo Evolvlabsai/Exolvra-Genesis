@@ -166,6 +166,19 @@ Seven commands:
   <name>` scaffolds one through the interview. `run <name>` then runs it by
   name: an existing path wins first, a goal name second, and anything else
   is an inline goal, with an ambiguous token refused while naming both.
+- `exolvra-genesis work` makes one unattended pass over GitHub issues a
+  maintainer labelled `exolvra:ready`: claim one, run the loop against the
+  issue as the spec, and end with evidence — a pull request on a win, a
+  draft PR carrying the open question on a block, a triage comment naming
+  exactly what is missing when nothing checkable can be derived. Humans
+  keep every merge decision. Every write requires a resolvable identity
+  (`--runner-login` for tokens GitHub will not name), secrets pasted into
+  issues render `[redacted]` everywhere — branch names included — and
+  `--dry-run` shows the whole plan while writing nothing.
+- `exolvra-genesis queue` lists eligible and in-flight issues across the
+  allowlisted repos, and `queue --fleet` renders the fleet page. Both are
+  read-only. `examples/issue-runner.yml` is the copy-one-file GitHub
+  Actions adoption path.
 
 `--model` pins the lead by exact model id. `--builder-model` and
 `--critic-model` take a model *family* (`opus`, `sonnet`, `haiku`, or

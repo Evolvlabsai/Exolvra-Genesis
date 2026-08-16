@@ -170,3 +170,45 @@ Build order within the effort: charting's local mode first (no dependency
 on this spec), then this runner, then charting's GitHub mode on the
 runner's module. The dogfood is shared: the first map charts this runner's
 own build (chart-spec R10).
+
+## Addendum v0.1.2 — a resolvable identity is a precondition for writing
+
+C2 says where the token comes from. It did not say the runner must be able
+to learn *who that token is*, and seven adversarial passes over the claim
+path established that it must.
+
+**The finding, in one sentence.** When the runner cannot resolve its own
+login, every decision about a claim rests on a status comment any stranger
+can author, and each such decision has exactly two options — trust the
+comment and permit a write, or distrust it and withhold a recovery. Both
+produced real defects, twice each: permitting gave a stranger's comment the
+power to move a live claim and to apply the authorization label; withholding
+gave one comment the power to strand an issue permanently, in violation of
+C7's promise that a crashed runner never strands an issue forever. There is
+no third answer available to a procedure whose only evidence is forgeable.
+
+**The amendment.** Every write the runner makes to a repository — labels,
+comments, branches, pull requests — requires a resolvable identity:
+
+- The runner resolves its own login once per run. A user-scoped token
+  answers directly. An installation or Actions token, which GitHub refuses
+  `GET /user`, must have its login supplied explicitly by the operator
+  (`--runner-login <name>`, or the equivalent environment variable) — an
+  act of configuration by somebody with repository access, not a claim
+  made by a comment.
+- Without one, the run exits 2 at startup, naming both remedies, before it
+  reads an issue or touches a label. It is a configuration error in the
+  existing sense: the invocation has to change before the command can run.
+- Read-only surfaces (`queue`, `--dry-run`, the fleet page) do not require
+  it. They make no writes, so no decision of theirs can be steered.
+
+**What this buys.** `attested` stops being a branch condition and becomes an
+invariant: a status comment is either provably the runner's own or it is
+somebody else's writing, with no third case to reason about. The recovery
+matrix collapses to one mode, and the reasoning that existed only to choose
+between two bad answers is deleted rather than maintained.
+
+**What it costs.** A documented configuration step, enforced loudly at
+startup rather than discovered as a runtime hazard nobody can see. The
+shipped Actions example carries the explicit login so that adopting the
+runner is still one file to copy.
