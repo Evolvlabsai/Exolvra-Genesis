@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -101,10 +102,46 @@ const SECRETS = Object.freeze({
  */
 const flatten = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
+/*
+ * One directory, two spellings.
+ *
+ * Windows keeps a DOS 8.3 name for every path alongside the long one, and the
+ * `TEMP` environment variable on a GitHub Actions runner carries the short
+ * form: `C:\Users\RUNNER~1\AppData\Local\Temp`. Everything built from
+ * `os.tmpdir()` inherits that spelling, while git answers with the long form it
+ * reads off the filesystem — so a fixture path and the path git reports for the
+ * very same directory compare unequal, and a test that means "the same
+ * directory" fails on a difference that is not one.
+ *
+ * `realpathSync.native` is the filesystem's own answer to "what is this called":
+ * it resolves the short form to the long one on Windows, and resolves symlinks
+ * everywhere else, so it is the right canonical form on both. Both sides of a
+ * path comparison go through it, and fixtures are made canonical the moment
+ * they are created, so nothing downstream carries the short spelling at all.
+ */
+
+/** A path as the filesystem spells it, in the platform's own separators. */
+function realPath(path) {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    // A path that is not there has no canonical form, and a comparison against
+    // one is a comparison of the strings — which is what it was before.
+    return path;
+  }
+}
+
+/** The same, in the one separator a comparison and a git argument both take. */
+function canonical(path) {
+  return realPath(path).replace(/\\/g, '/');
+}
+
 const TEMP = [];
 
 function tempDir(prefix) {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
+  // Canonical from the start: the fixture is the long form even when TEMP is
+  // not, so every path derived from it is already the name git will use.
+  const dir = realPath(mkdtempSync(join(tmpdir(), prefix)));
   TEMP.push(dir);
   return dir;
 }
@@ -155,8 +192,41 @@ process.env.GIT_CONFIG_NOSYSTEM = '1';
  * directory — or in the system temp directory, which is where this one was —
  * a directory with no repository in it is still inside a repository, and the
  * test for "this is not a checkout" would silently stop testing anything.
+ *
+ * Canonical, like everything else: git compares this against the directory it
+ * has resolved, so a ceiling spelled the short way would be a ceiling that
+ * never matches and silently does nothing.
  */
-process.env.GIT_CEILING_DIRECTORIES = tmpdir().replace(/\\/g, '/');
+process.env.GIT_CEILING_DIRECTORIES = canonical(tmpdir());
+
+/**
+ * The DOS 8.3 spelling of a directory, when the volume still keeps one.
+ *
+ * Asked of Windows itself rather than constructed, because the short name is
+ * assigned by the filesystem — `SHORTN~1` versus `SHORTN~2` depends on what
+ * else is in the directory, and a guess would prove nothing. Undefined anywhere
+ * the question does not apply.
+ */
+function shortPathOf(path) {
+  if (process.platform !== 'win32') return undefined;
+  const result = spawnSync(
+    'powershell',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      // The path is one this file just created out of a fixed prefix and
+      // mkdtemp's random letters, so there is nothing in it to quote around.
+      '(New-Object -ComObject Scripting.FileSystemObject).GetFolder("' +
+        path +
+        '").ShortPath',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  if (result.status !== 0) return undefined;
+  const short = (result.stdout ?? '').trim();
+  return short === '' ? undefined : short;
+}
 
 /** Real git, for building and inspecting a fixture. Never the module's path. */
 function git(cwd, args) {
@@ -979,11 +1049,44 @@ test('a refusal carries the house error shape and the usage exit code', () => {
 /* Against a real repository                                                   */
 /* -------------------------------------------------------------------------- */
 
+test('a path is compared as a directory, not as whichever name it was reached by', () => {
+  const dir = tempDir('exolvra-shortpath-');
+
+  // True wherever this runs: canonicalising settles in one step, a trailing
+  // separator is not a different directory, and a fixture is already canonical.
+  assert.equal(canonical(dir), canonical(canonical(dir)));
+  assert.equal(canonical(dir + '/'), canonical(dir));
+  assert.equal(canonical(dir), dir.replace(/\\/g, '/'));
+
+  const short = shortPathOf(dir);
+  if (short === undefined || short === dir) {
+    // Not Windows, or a volume with 8.3 names switched off: there is no second
+    // spelling here to prove anything with, and the identities above are what
+    // there is to check. The comparison is still the canonical one everywhere.
+    return;
+  }
+
+  // The failure a Windows CI runner sees, in miniature: TEMP carries the short
+  // form, git answers with the long one, and the two strings are not equal.
+  assert.notEqual(short.replace(/\\/g, '/'), dir.replace(/\\/g, '/'));
+  assert.match(short, /~\d/, 'the short form is really an 8.3 name: ' + short);
+
+  // And what this file does about it.
+  assert.equal(canonical(short), canonical(dir));
+
+  // Including the path a fixture actually is: a directory under the one whose
+  // name was short, which is the shape every repository here has.
+  mkdirSync(join(dir, 'work'), { recursive: true });
+  assert.equal(canonical(join(short, 'work')), canonical(join(dir, 'work')));
+});
+
 test('a branch is created, the tree is committed, and the branch is pushed', () => {
   const { work, remote } = makeRepo();
   const ctx = context(work);
 
-  assert.equal(repoRoot(ctx).replace(/\\/g, '/'), work.replace(/\\/g, '/'));
+  // Compared as directories, not as strings: git answers with the long form of
+  // a path whatever spelling the fixture was built from.
+  assert.equal(canonical(repoRoot(ctx)), canonical(work));
   assert.equal(currentBranch(ctx), 'main');
 
   const branch = ensureIssueBranch(ctx, { number: 12, title: 'Fix login' });
@@ -1688,9 +1791,9 @@ test('a result names the URL the push used, not the one the remote reads from', 
   git(work, ['remote', 'set-url', '--push', 'origin', elsewhere.replace(/\\/g, '/')]);
 
   const urls = remoteUrls(ctx);
-  assert.equal(urls.fetch.replace(/\\/g, '/'), remote.replace(/\\/g, '/'));
-  assert.equal(urls.push.replace(/\\/g, '/'), elsewhere.replace(/\\/g, '/'));
-  assert.notEqual(urls.fetch, urls.push);
+  assert.equal(canonical(urls.fetch), canonical(remote));
+  assert.equal(canonical(urls.push), canonical(elsewhere));
+  assert.notEqual(canonical(urls.fetch), canonical(urls.push));
 
   const branch = ensureIssueBranch(ctx, { number: 21, title: 'Push URL' }).branch;
   writeFileSync(join(work, 'a.txt'), 'a\n', 'utf8');
@@ -1698,8 +1801,8 @@ test('a result names the URL the push used, not the one the remote reads from', 
   const push = pushBranch(ctx, branch);
 
   assert.equal(
-    push.url.replace(/\\/g, '/'),
-    elsewhere.replace(/\\/g, '/'),
+    canonical(push.url),
+    canonical(elsewhere),
     'the result names where the commits really went',
   );
   assert.deepEqual(remoteRefs(elsewhere), [commit.sha + ' refs/heads/' + branch]);

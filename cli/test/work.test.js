@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -539,25 +540,85 @@ function pathOf(dir) {
   return { ...stripped, PATH: dir };
 }
 
-/**
- * A PATH carrying git and not `gh`, so a run can reach its checkout and still
- * have no way to be handed a token.
- *
- * The premise is checked rather than assumed: a machine that keeps both in one
- * directory would make this test prove nothing, and it says so instead.
- */
-function pathWithGitButNotGh() {
-  const windows = process.platform === 'win32';
-  const extensions = windows ? ['.exe', '.cmd', '.bat', ''] : [''];
-  const holds = (dir, program) =>
-    extensions.some((extension) => existsSync(join(dir, program + extension)));
+/** The suffixes an entry can carry and still resolve as a program on this OS. */
+const PROGRAM_EXTENSIONS = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
 
-  const dirs = (process.env.PATH ?? process.env.Path ?? '')
-    .split(windows ? ';' : ':')
-    .filter((entry) => entry !== '');
-  const dir = dirs.find((entry) => holds(entry, 'git'));
-  assert.ok(dir !== undefined, 'git is not on PATH, so this test cannot build a PATH with it');
-  assert.ok(!holds(dir, 'gh'), 'git and gh share a directory here, so the premise fails');
+/** Whether `dir` holds something that would resolve as `program`. */
+function holds(dir, program) {
+  return PROGRAM_EXTENSIONS.some((extension) => existsSync(join(dir, program + extension)));
+}
+
+/** The directories of a PATH string, in order, empties dropped. */
+function pathEntries(search) {
+  return search.split(process.platform === 'win32' ? ';' : ':').filter((entry) => entry !== '');
+}
+
+/** This host's own PATH, whatever case it spells the variable. */
+function hostPath() {
+  return process.env.PATH ?? process.env.Path ?? '';
+}
+
+/**
+ * A directory that resolves git and does not resolve `gh` — built, not found.
+ *
+ * The run this serves has to reach its checkout, which means real git, and
+ * still have no way of being handed a token, which means `gh` must be
+ * unreachable. Searching this host's PATH for a directory answering both cannot
+ * be relied on: a Linux runner installs git and `gh` side by side in
+ * `/usr/bin`, so the search succeeds and hands back a directory carrying the
+ * one program the test needs missing. The directory is therefore made here, and
+ * the property is asserted on what was made.
+ *
+ * POSIX can construct one outright: a two-line `exec` script named `git`, alone
+ * in a fresh directory, forwarding to the real binary. No host layout reaches
+ * it.
+ *
+ * Windows can only mirror one. A copied `git.exe` loses the DLLs and the
+ * install root it expects to find beside itself; hard links and file symlinks
+ * want rights a test process is not given; and a `git.cmd` never starts at all,
+ * because `git.ts` spawns without a shell and Windows will not launch a script
+ * that way. That leaves a directory junction onto a real git's own directory,
+ * which carries that directory's neighbours along with it — so on Windows, and
+ * only on Windows, the source has to be a directory that already holds no `gh`.
+ */
+function gitOnlyPath(search = hostPath()) {
+  const dir = join(temp('git-shim-'), 'bin');
+  const carrying = pathEntries(search).filter((entry) => holds(entry, 'git'));
+  assert.ok(
+    carrying.length > 0,
+    'git is not on the PATH this was handed, so no PATH carrying git can be built from it',
+  );
+
+  if (process.platform !== 'win32') {
+    const real = join(carrying[0], 'git');
+    assert.ok(!real.includes("'"), 'this git cannot be quoted into a shim script: ' + real);
+    mkdirSync(dir, { recursive: true });
+    const shim = join(dir, 'git');
+    writeFileSync(shim, '#!/bin/sh' + NL + "exec '" + real + "' \"$@\"" + NL, 'utf8');
+    chmodSync(shim, 0o755);
+  } else {
+    const source = carrying.find((entry) => !holds(entry, 'gh'));
+    assert.ok(
+      source !== undefined,
+      'every git on this PATH shares a directory with gh, and Windows gives a test no way ' +
+        'to put a working git.exe anywhere else',
+    );
+    symlinkSync(source, dir, 'junction');
+  }
+
+  assert.ok(holds(dir, 'git'), 'the directory built for this test does not resolve git');
+  assert.ok(!holds(dir, 'gh'), 'the directory built for this test resolves gh');
+  const version = spawnSync('git', ['--version'], {
+    encoding: 'utf8',
+    shell: false,
+    env: { ...process.env, ...pathOf(dir) },
+  });
+  assert.equal(
+    version.status,
+    0,
+    'git does not run from the directory built for this test: ' +
+      (version.error?.code ?? version.stderr),
+  );
   return dir;
 }
 
@@ -1275,7 +1336,7 @@ test('R11/C2: no token at all is a configuration error, and nothing is requested
 
   const result = await work(fake, ['--repo', 'cli/cli'], {
     cwd,
-    env: { GITHUB_TOKEN: undefined, ...pathOf(pathWithGitButNotGh()) },
+    env: { GITHUB_TOKEN: undefined, ...pathOf(gitOnlyPath()) },
   });
 
   assert.equal(result.code, 2, result.stdout + result.stderr);
@@ -1283,6 +1344,44 @@ test('R11/C2: no token at all is a configuration error, and nothing is requested
   assert.match(result.stderr, /no GitHub token is available/);
   assert.match(result.stderr, /GITHUB_TOKEN is not set/);
   assert.deepEqual(fake.requests, [], 'a run with no token still reached GitHub');
+});
+
+test('the git-only PATH is built, so git and gh in one directory cannot defeat it', () => {
+  const windows = process.platform === 'win32';
+  const real = pathEntries(hostPath()).find((entry) => holds(entry, 'git'));
+  assert.ok(real !== undefined, 'git is not on PATH, so this has nothing real to build from');
+
+  /*
+   * A directory in the shape of a Linux runner's `/usr/bin`: git and gh in one
+   * place. This machine keeps the two apart, so the collision that broke CI is
+   * staged here rather than waited for. Only the test above's need is staged —
+   * the git in it forwards to the real one, so anything built from this PATH
+   * has to be genuinely runnable.
+   */
+  const shared = join(temp('shared-tools-'), 'usr-bin');
+  mkdirSync(shared, { recursive: true });
+  if (windows) {
+    writeFileSync(join(shared, 'git.exe'), '', 'utf8');
+  } else {
+    const shim = join(shared, 'git');
+    writeFileSync(shim, '#!/bin/sh' + NL + "exec '" + join(real, 'git') + "' \"$@\"" + NL, 'utf8');
+    chmodSync(shim, 0o755);
+  }
+  writeFileSync(join(shared, windows ? 'gh.exe' : 'gh'), '', 'utf8');
+
+  const search = [shared, real].join(windows ? ';' : ':');
+
+  // Finding a directory — what this replaced — lands on the collision and hands
+  // back a PATH that resolves the very program the test needs unreachable.
+  const found = pathEntries(search).find((entry) => holds(entry, 'git'));
+  assert.equal(found, shared, 'the staged collision is not the first git on this PATH');
+  assert.ok(holds(found, 'gh'), 'the staged collision does not hold gh, so it proves nothing');
+
+  // Building one does not. `gitOnlyPath` asserts that git runs from the result.
+  const built = gitOnlyPath(search);
+  assert.notEqual(built, shared, 'the built directory is the collision itself');
+  assert.ok(holds(built, 'git'), 'the built directory does not resolve git');
+  assert.ok(!holds(built, 'gh'), 'the built directory resolves gh');
 });
 
 test('C5: an empty allowlist is exit 2, and says what an empty one is not', async () => {
