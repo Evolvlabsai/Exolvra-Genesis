@@ -257,12 +257,16 @@ test('the packed file list is what the package means to ship', () => {
   const names = (listed[0]?.files ?? []).map((entry) => entry.path);
   assert.ok(names.includes('package.json'));
   assert.ok(
+    names.includes('README.md'),
+    'the registry page reads the package root README; a tarball without one ships a blank page',
+  );
+  assert.ok(
     names.some((name) => name.startsWith('dist/plugin/')),
     'a dry run does not list the plugin markdown:\n' + names.join('\n'),
   );
   for (const name of names) {
     assert.ok(
-      name === 'package.json' || name === 'LICENSE' || name.startsWith('dist/'),
+      name === 'package.json' || name === 'LICENSE' || name === 'README.md' || name.startsWith('dist/'),
       'an unexpected file is shipped: ' + name,
     );
   }
