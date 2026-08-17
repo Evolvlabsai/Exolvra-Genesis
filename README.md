@@ -182,6 +182,8 @@ Nine commands:
   read-only. `examples/issue-runner.yml` is the copy-one-file GitHub
   Actions adoption path.
 
+![The issue runner: a maintainer labels an issue exolvra:ready; the runner proves its identity to GitHub, claims the issue, snapshots and pins it, and runs the loop with the issue as the spec. Nothing checkable becomes a triage comment naming what is missing, until a maintainer answers and re-adds ready; a win becomes a pushed branch and a pull request at exolvra:review, merged only by a human; a block or budget stop becomes a draft PR stating what a human must decide](docs/issue-runner.svg)
+
 `--model` pins the lead by exact model id. `--builder-model` and
 `--critic-model` take a model *family* (`opus`, `sonnet`, `haiku`, or
 `inherit`), because the SDK pins subagents to a family rather than a version,
