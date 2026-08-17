@@ -128,13 +128,15 @@ CLI loads `commands/run.md` and both agent files from the installed package
 at runtime (`EXOLVRA_GENESIS_PLUGIN_DIR` or `--plugin-dir` override the
 location), so the two cannot drift.
 
-Not yet on npm; build it from the repo:
+Install it from npm:
 
 ```
-cd cli && npm install && npm run build && npm link
+npm install -g exolvra-genesis
 ```
 
-Seven commands:
+or build it from the repo: `cd cli && npm install && npm run build && npm link`.
+
+Nine commands:
 
 - `exolvra-genesis interview [spec-or-idea]` runs the same interview in the
   terminal. Each question renders in the frame, your typed answer resumes the
