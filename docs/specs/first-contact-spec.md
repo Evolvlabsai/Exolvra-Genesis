@@ -22,10 +22,15 @@ sentence naming its remedy.
 
 ## Constraints
 
-- **C1 — The cautious default stays.** `acceptEdits` remains the default
-  permission mode. A tool that executes arbitrary commands on the operator's
-  machine makes them say so once; the fix below is discovering the
-  consequence early, never widening the default.
+- **C1 — The default is capability, chosen by the owner (2026-08-18).**
+  `run` and `resume` default to `bypassPermissions`: an unattended build
+  executes the verification commands it was given, and a default that cannot
+  finish a loop headlessly punished every first contact. The flag is the
+  restriction — `acceptEdits` and `default` remain for cautious operators —
+  and `plan` keeps the cautious default because it executes nothing. (This
+  reverses this spec's original constraint after field pain; the 0.8.2
+  changelog records the incident. The preflight below remains for restricted
+  modes chosen explicitly.)
 - **C2 — Preflight is cheap and honest.** The execution preflight costs one
   no-op command through the real session — no model tokens spent probing, no
   fake success, and its result is stated, not inferred. A preflight pass is

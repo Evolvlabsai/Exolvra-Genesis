@@ -39,6 +39,32 @@ import type { AgentModel, ModelChoice } from './models.js';
 /** The directory this CLI owns inside the OS user-config location. */
 export const CONFIG_DIR_NAME = 'exolvra-genesis';
 
+/** The environment variable that bounds automatic session recovery. */
+export const AUTO_RESUME_ENV = 'EXOLVRA_GENESIS_AUTO_RESUMES';
+
+/**
+ * How many times `run` and `resume` may re-drive a session that ended
+ * abnormally — a stream fault, or a turn that finished while state.json still
+ * said `running` — before giving the keyboard back to a person.
+ *
+ * A *deliberate* ending never counts: a lead that settled `blocked` made a
+ * decision, a budget guard that tripped enforced one, and re-driving either
+ * would spend money asking a question that was already answered. The bound
+ * exists because an abnormal death can be systemic (a dead credential, a full
+ * disk), and unbounded retries against a systemic fault are a bill, not a fix.
+ *
+ * Default 2. `0` disables recovery entirely — the pre-0.8.2 behavior, and what
+ * tests that stage session faults set. Clamped to at most 5: past that, the
+ * fault is not going away on its own.
+ */
+export function autoResumeLimit(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[AUTO_RESUME_ENV];
+  if (raw === undefined || raw.trim() === '') return 2;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed < 0) return 2;
+  return Math.min(parsed, 5);
+}
+
 /** The file inside it. */
 export const CONFIG_FILE_NAME = 'config.json';
 

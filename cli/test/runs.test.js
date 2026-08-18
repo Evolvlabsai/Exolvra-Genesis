@@ -1231,14 +1231,16 @@ test('resume hands the recorded session id back to the SDK', () => {
 
   const { code, stdout, stderr } = sandbox.run(
     ['resume', id, '-C', dir, '--plugin-dir', REPO_ROOT],
-    { record: options, cwd: dir },
+    // Recovery off: this test pins the FIRST session's options, and a staged
+    // turn that ends unsettled would otherwise be re-driven and re-recorded.
+    { record: options, cwd: dir, env: { EXOLVRA_GENESIS_AUTO_RESUMES: '0' } },
   );
 
   const sent = JSON.parse(readFileSync(options, 'utf8'));
   assert.equal(sent.resume, 'sesn_01J9ZQ', 'the session id was not the one recorded');
   assert.equal(sent.cwd, dir);
   assert.equal(sent.maxTurns, 100);
-  assert.equal(sent.permissionMode, 'acceptEdits');
+  assert.equal(sent.permissionMode, 'bypassPermissions');
   assert.deepEqual(Object.keys(sent.agents).sort(), ['exolvra-genesis-builder', 'exolvra-genesis-critic']);
 
   // Piped, a resumed run is the same stream a run writes: records, one per
@@ -1276,6 +1278,53 @@ test('resume hands the recorded session id back to the SDK', () => {
     again.stderr.includes('nothing left of it to continue'),
     false,
     'the advice printed by one command was refused by the next:\n' + again.stderr,
+  );
+});
+
+test('an abnormal end is re-driven automatically, bounded, and the env var turns it off', () => {
+  const dir = seed(fresh(), ledger());
+  const options = join(dir, 'sdk-options.json');
+  const id = 'r-20260810-1712-c10e5f';
+
+  // First session drops its stream; every later one completes. The turn still
+  // never settles the run, so recovery fires, carries the session id the fault
+  // left behind, spends its whole bounded allowance, and then reports honestly.
+  const { code, stdout } = sandbox.run(
+    ['resume', id, '-C', dir, '--plugin-dir', REPO_ROOT],
+    { subtype: 'midstream_then_success', record: options, cwd: dir },
+  );
+  assert.equal(code, 1, 'an unfinished run is not a win, recovered or not');
+  assert.ok(
+    stdout.includes('resuming automatically (attempt 1 of 2)'),
+    'the first recovery must announce itself:\n' + stdout,
+  );
+  assert.ok(
+    stdout.includes('resuming automatically (attempt 2 of 2)'),
+    'the allowance is 2, and both attempts say so:\n' + stdout,
+  );
+  assert.equal(
+    stdout.includes('attempt 3'),
+    false,
+    'the bound is a bound:\n' + stdout,
+  );
+  const sent = JSON.parse(readFileSync(options, 'utf8'));
+  assert.equal(
+    sent.resume,
+    'sesn_fake',
+    'recovery must resume the session the fault left behind, not start cold',
+  );
+
+  // The off switch is the pre-recovery behavior, exactly.
+  const off = sandbox.run(['resume', id, '-C', dir, '--plugin-dir', REPO_ROOT], {
+    subtype: 'throw_midstream',
+    cwd: dir,
+    env: { EXOLVRA_GENESIS_AUTO_RESUMES: '0' },
+  });
+  assert.equal(off.code, 1);
+  assert.equal(
+    (off.stdout + off.stderr).includes('resuming automatically'),
+    false,
+    'with the allowance at 0 no recovery may run:\n' + off.stdout + off.stderr,
   );
 });
 

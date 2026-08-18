@@ -147,6 +147,26 @@ export function query({ prompt, options }) {
       },
     };
   }
+  if (subtype === 'midstream_then_success') {
+    // Stateful across createSession calls INSIDE one CLI process: the first
+    // session drops its stream, every later one completes. This is the shape
+    // auto-recovery exists for, and only a per-call fake can stage it.
+    globalThis.__exolvraFakeCalls = (globalThis.__exolvraFakeCalls ?? 0) + 1;
+    if (globalThis.__exolvraFakeCalls === 1) {
+      return {
+        async interrupt() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'assistant',
+            session_id: 'sesn_fake',
+            message: { content: [{ type: 'text', text: 'started work' }] },
+          };
+          throw new Error('the provider dropped the stream');
+        },
+      };
+    }
+    // Later calls fall through to the plain success result below.
+  }
   if (subtype === 'throw_midstream') {
     return {
       async interrupt() {},
@@ -162,7 +182,7 @@ export function query({ prompt, options }) {
   }
 
   const result =
-    subtype === 'success'
+    subtype === 'success' || subtype === 'midstream_then_success'
       ? {
           type: 'result',
           subtype: 'success',

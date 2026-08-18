@@ -8,7 +8,7 @@ import {
   createBudget,
   formatUsd,
 } from '../budget.js';
-import { configFromChoices, loadConfig, saveConfig } from '../config.js';
+import { autoResumeLimit, configFromChoices, loadConfig, saveConfig } from '../config.js';
 import type { ExolvraGenesisConfig } from '../config.js';
 import type {
   BarArtifact,
@@ -123,6 +123,13 @@ export function progressPage(cwd: string, from: string): string {
 const AUTO_PREFIX = 'auto';
 const GO = 'go';
 
+/**
+ * What a recovered session is asked, in the loaded markdown's own vocabulary —
+ * the same sentence `resume` has always used, because recovering in place IS a
+ * resume, minus the walk back to the keyboard.
+ */
+const CONTINUE = 'Continue from where this session left off.';
+
 const PERMISSION_MODES = [
   'default',
   'acceptEdits',
@@ -203,8 +210,11 @@ const maxCostFlag: ValueFlagSpec<number> = {
 const permissionModeFlag: ValueFlagSpec<(typeof PERMISSION_MODES)[number]> = {
   long: 'permission-mode',
   value: choiceValue('mode', PERMISSION_MODES),
-  summary: 'How the run may use tools',
-  default: 'acceptEdits',
+  // An unattended build runs the verification commands it was given, so the
+  // default is the mode that lets it. The flag is the restriction, not the
+  // permission: pass acceptEdits to make every command wait for a keyboard.
+  summary: 'How the run may use tools (builds execute commands; restrict with acceptEdits)',
+  default: 'bypassPermissions',
 };
 
 const autoFlag: BooleanFlagSpec = {
@@ -1181,7 +1191,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       ...(args.get(maxCostFlag) === undefined
         ? {}
         : { maxBudgetUsd: args.get(maxCostFlag) as number }),
-      permissionMode: args.get(permissionModeFlag) ?? 'acceptEdits',
+      permissionMode: args.get(permissionModeFlag) ?? 'bypassPermissions',
       hooks: { onMessage },
     });
     session = current;
@@ -1305,6 +1315,39 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     return outcome.exit;
   };
 
+  /*
+   * Recovery from an ABNORMAL session end: a stream fault, or a turn that
+   * finished while state.json still said `running`. A deliberate ending is
+   * never re-driven — a lead that settled `blocked` made a decision, a guard
+   * that tripped enforced one, an interrupt was a person — and re-asking an
+   * answered question costs money. Bounded (EXOLVRA_GENESIS_AUTO_RESUMES,
+   * default 2, 0 disables), because an abnormal death can be systemic — a dead
+   * credential, a full disk — and unbounded retries against a systemic fault
+   * are a bill, not a fix.
+   */
+  const autoResumeMax = autoResumeLimit();
+  let autoResumes = 0;
+  const canRecover = (): boolean =>
+    autoResumes < autoResumeMax &&
+    sessionId !== undefined &&
+    !interrupted() &&
+    stopped === undefined;
+  const recover = async (why: string): Promise<SessionResult | undefined> => {
+    autoResumes += 1;
+    reporter.emit({
+      type: 'notice',
+      level: 'warning',
+      message:
+        why +
+        ' — resuming automatically (attempt ' +
+        autoResumes +
+        ' of ' +
+        autoResumeMax +
+        ')',
+    });
+    return drain(CONTINUE, sessionId);
+  };
+
   try {
     // Review is a pause the loaded markdown already knows how to take: without
     // the word that skips it, the run stops once the bar is picked and waits.
@@ -1314,6 +1357,21 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     // how the turn ended, because a run that met its win condition has won
     // whether or not a guard or a Ctrl+C cut the turn short.
     const finishedWell = (): boolean => readState(cwd).status === 'complete';
+
+    // A faulted stream is re-driven before it is reported: the state on disk
+    // survives the session, so a fresh session picking up where it died is the
+    // same act as the human retyping the resume line, minus the human.
+    while (
+      result !== undefined &&
+      result.status === 'error' &&
+      !finishedWell() &&
+      canRecover()
+    ) {
+      result = await recover(
+        'the session ended with a fault: ' +
+          printable(result.error ?? 'no reason was reported'),
+      );
+    }
 
     if (interrupted()) {
       return finishedWell()
@@ -1370,6 +1428,17 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       if (!approved) return finish(STOPPED, 'the loop was not started');
 
       result = await drain(GO, sessionId);
+      while (
+        result !== undefined &&
+        result.status === 'error' &&
+        !finishedWell() &&
+        canRecover()
+      ) {
+        result = await recover(
+          'the session ended with a fault: ' +
+            printable(result.error ?? 'no reason was reported'),
+        );
+      }
       if (interrupted() && !finishedWell()) {
         return finish(STOPPED, 'the run was interrupted');
       }
@@ -1389,8 +1458,28 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
 
     // A session that ended is not a run that won. What the run says about itself
     // is what decides that, and it says it in the file it has always said it in.
-    const state = readState(cwd);
+    // A session that ended cleanly while the file still says `running` died
+    // without settling — the one clean ending that is not a decision — so it is
+    // re-driven like a fault; `blocked` and `stopped` are verdicts and stand.
+    let state = readState(cwd);
+    while (
+      state.status === 'running' &&
+      result.status === 'complete' &&
+      canRecover()
+    ) {
+      const next = await recover('the session ended with the run unfinished');
+      if (next === undefined) break;
+      result = next;
+      state = readState(cwd);
+    }
     if (state.status === 'complete') return finish(WON);
+    if (result.status === 'error') {
+      return finish(
+        BLOCKED,
+        'the run did not finish: ' +
+          printable(result.error ?? 'no reason was reported'),
+      );
+    }
     return finish(
       outcomeOf(result, false),
       'the session ended with the run unfinished (' + state.detail + ')',

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.2 — 2026-08-18
+
+- An abnormal session end recovers itself. When a `run` or `resume` session
+  dies with the run still saying `running` — a dropped stream, a crashed
+  process — the CLI now re-drives the same session in place instead of
+  printing a resume line at an empty chair, bounded by
+  `EXOLVRA_GENESIS_AUTO_RESUMES` (default 2, 0 disables). Deliberate endings
+  are never re-driven: a lead that settled `blocked` made a decision, a
+  tripped budget guard enforced one, an interrupt was a person.
+- `run` and `resume` default to `--permission-mode bypassPermissions`. An
+  unattended build executes the verification commands it was given; under the
+  old `acceptEdits` default a headless loop could edit files but never run a
+  command, and discovered it 25 minutes in. The flag is now the restriction
+  rather than the permission; `plan` keeps the cautious default because it
+  executes nothing.
+- Both changes came out of the first standalone-CLI runs on a real machine,
+  the same night that produced the run-state-hygiene and first-contact specs.
+
 ## 0.8.1 — 2026-08-16
 
 - The npm package carries a README. The package page was blank because the

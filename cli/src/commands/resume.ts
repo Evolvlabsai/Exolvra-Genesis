@@ -7,6 +7,7 @@ import {
   createBudget,
   formatUsd,
 } from '../budget.js';
+import { autoResumeLimit } from '../config.js';
 import { ConfigError, EXIT, UsageError } from '../exit.js';
 import { expandHome, pathKind } from '../input.js';
 import {
@@ -47,6 +48,7 @@ import {
 } from '../runs-store.js';
 import {
   type SdkMessage,
+  type Session,
   type SessionResult,
   assistantText,
   createSession,
@@ -154,8 +156,10 @@ const maxTurnsFlag: ValueFlagSpec<number> = {
 const permissionModeFlag: ValueFlagSpec<(typeof PERMISSION_MODES)[number]> = {
   long: 'permission-mode',
   value: choiceValue('mode', PERMISSION_MODES),
-  summary: 'How the resumed run may use tools',
-  default: 'acceptEdits',
+  // The same default `run` carries, for the same reason: an unattended build
+  // runs its verification commands, and the flag is the restriction.
+  summary: 'How the resumed run may use tools (restrict with acceptEdits)',
+  default: 'bypassPermissions',
 };
 
 const verboseFlag: BooleanFlagSpec = {
@@ -686,7 +690,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
     onMessageEnd: announce,
   });
 
-  const session = createSession({
+  const makeSession = (): Session => createSession({
     prompt: CONTINUE,
     sources,
     models,
@@ -698,7 +702,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
     ...(args.get(maxCostFlag) === undefined
       ? {}
       : { maxBudgetUsd: args.get(maxCostFlag) as number }),
-    permissionMode: args.get(permissionModeFlag) ?? 'acceptEdits',
+    permissionMode: args.get(permissionModeFlag) ?? 'bypassPermissions',
     hooks: {
       onMessage(message: SdkMessage): void {
         if (finished) return;
@@ -721,6 +725,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
       },
     },
   });
+  let session = makeSession();
 
   // What the run was started with, echoed as it was recorded. Whether it was a
   // spec is asked of the filesystem rather than remembered, by the same rule
@@ -744,9 +749,45 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   // turn's own verdict.
   writeState(cwd, 'running');
 
+  /*
+   * The drive, with in-place recovery from an ABNORMAL end: a stream fault, or
+   * a turn that finished while state.json still said `running` — the one clean
+   * ending that is not a decision. Verdicts stand: a lead that settled
+   * `blocked`, a guard that tripped (`stopped`), an interrupt. Bounded by
+   * EXOLVRA_GENESIS_AUTO_RESUMES (default 2, 0 disables), because an abnormal
+   * death can be systemic and unbounded retries against a dead credential are
+   * a bill, not a fix. A thrown fault below is different in kind — the turn
+   * could not start at all — and is not retried.
+   */
+  const autoResumeMax = autoResumeLimit();
+  let autoResumes = 0;
+  let driveFrom = sessionId;
   let result: SessionResult;
   try {
-    result = await session.resume(sessionId);
+    for (;;) {
+      result = await session.resume(driveFrom);
+      const abnormal =
+        stopped === undefined &&
+        readState(cwd).status === 'running' &&
+        (result.status === 'error' || result.status === 'complete');
+      if (!abnormal || autoResumes >= autoResumeMax) break;
+      autoResumes += 1;
+      reporter.emit({
+        type: 'notice',
+        level: 'warning',
+        message:
+          (result.status === 'error'
+            ? 'the session ended with a fault'
+            : 'the session ended with the run unfinished') +
+          ' — resuming automatically (attempt ' +
+          autoResumes +
+          ' of ' +
+          autoResumeMax +
+          ')',
+      });
+      driveFrom = result.sessionId ?? driveFrom;
+      session = makeSession();
+    }
   } catch (error) {
     /*
      * A fault, and the turn is over however it is about to be reported.
