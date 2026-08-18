@@ -51,6 +51,12 @@ an instruction and becomes structure.
 - **C8 — Single-machine remains first-class.** No daemon, no coordinator, no
   new required infrastructure for the existing experience. Distribution is
   additive (`exolvra-genesis daemon`, or equivalent), never a migration.
+- **C9 — The protocol ships modeled and explored before implementation.**
+  The claim/dispatch/TTL protocol is written in TLA+ notation and
+  exhaustively checked by the in-suite explorer per
+  `modeled-protocols-spec.md` — states, attacker moves, and the C3–C7
+  invariants above as named invariants — before any worker code is built.
+  No Java, no TLC: the explorer is the checker.
 
 ## Requirements
 
