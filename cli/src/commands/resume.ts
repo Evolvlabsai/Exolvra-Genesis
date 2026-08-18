@@ -7,7 +7,7 @@ import {
   createBudget,
   formatUsd,
 } from '../budget.js';
-import { autoResumeLimit } from '../config.js';
+import { autoResumeDelayMs, autoResumeLimit } from '../config.js';
 import { ConfigError, EXIT, UsageError } from '../exit.js';
 import { expandHome, pathKind } from '../input.js';
 import {
@@ -772,6 +772,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
         (result.status === 'error' || result.status === 'complete');
       if (!abnormal || autoResumes >= autoResumeMax) break;
       autoResumes += 1;
+      const waitMs = autoResumeDelayMs(autoResumes);
       reporter.emit({
         type: 'notice',
         level: 'warning',
@@ -783,8 +784,13 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
           autoResumes +
           ' of ' +
           autoResumeMax +
+          (waitMs > 0 ? ', after ' + Math.round(waitMs / 1000) + 's' : '') +
           ')',
       });
+      // An instant retry asks the same overloaded servers the same question
+      // in the same moment; the wait is what makes the attempt a real one.
+      if (waitMs > 0) await new Promise((settle) => setTimeout(settle, waitMs));
+      if (stopped !== undefined) break;
       driveFrom = result.sessionId ?? driveFrom;
       session = makeSession();
     }

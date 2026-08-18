@@ -8,7 +8,7 @@ import {
   createBudget,
   formatUsd,
 } from '../budget.js';
-import { autoResumeLimit, configFromChoices, loadConfig, saveConfig } from '../config.js';
+import { autoResumeDelayMs, autoResumeLimit, configFromChoices, loadConfig, saveConfig } from '../config.js';
 import type { ExolvraGenesisConfig } from '../config.js';
 import type {
   BarArtifact,
@@ -1334,6 +1334,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     stopped === undefined;
   const recover = async (why: string): Promise<SessionResult | undefined> => {
     autoResumes += 1;
+    const waitMs = autoResumeDelayMs(autoResumes);
     reporter.emit({
       type: 'notice',
       level: 'warning',
@@ -1343,8 +1344,13 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
         autoResumes +
         ' of ' +
         autoResumeMax +
+        (waitMs > 0 ? ', after ' + Math.round(waitMs / 1000) + 's' : '') +
         ')',
     });
+    // An instant retry asks the same overloaded servers the same question in
+    // the same moment; the wait is what makes the attempt a real one.
+    if (waitMs > 0) await new Promise((settle) => setTimeout(settle, waitMs));
+    if (interrupted() || stopped !== undefined) return undefined;
     return drain(CONTINUE, sessionId);
   };
 

@@ -15,8 +15,14 @@
   command, and discovered it 25 minutes in. The flag is now the restriction
   rather than the permission; `plan` keeps the cautious default because it
   executes nothing.
-- Both changes came out of the first standalone-CLI runs on a real machine,
-  the same night that produced the run-state-hygiene and first-contact specs.
+- Recovery waits before it retries: attempt N backs off N ×
+  `EXOLVRA_GENESIS_AUTO_RESUME_DELAY_MS` (default 15s), because the fault it
+  most often meets is the API saying "Overloaded" and an instant retry asks
+  the same servers the same question in the same moment. Found live: a 529
+  killed a run and both instant retries died inside the same overload window.
+- All three changes came out of the first standalone-CLI runs on a real
+  machine, the same days that produced the run-state-hygiene and
+  first-contact specs.
 
 ## 0.8.1 — 2026-08-16
 

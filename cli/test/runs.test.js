@@ -1291,7 +1291,13 @@ test('an abnormal end is re-driven automatically, bounded, and the env var turns
   // left behind, spends its whole bounded allowance, and then reports honestly.
   const { code, stdout } = sandbox.run(
     ['resume', id, '-C', dir, '--plugin-dir', REPO_ROOT],
-    { subtype: 'midstream_then_success', record: options, cwd: dir },
+    {
+      subtype: 'midstream_then_success',
+      record: options,
+      cwd: dir,
+      // No backoff in tests: the wait is for real overloaded providers.
+      env: { EXOLVRA_GENESIS_AUTO_RESUME_DELAY_MS: '0' },
+    },
   );
   assert.equal(code, 1, 'an unfinished run is not a win, recovered or not');
   assert.ok(

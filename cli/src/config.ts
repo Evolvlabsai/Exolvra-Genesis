@@ -65,6 +65,30 @@ export function autoResumeLimit(env: NodeJS.ProcessEnv = process.env): number {
   return Math.min(parsed, 5);
 }
 
+/** The environment variable that scales recovery's wait, in milliseconds. */
+export const AUTO_RESUME_DELAY_ENV = 'EXOLVRA_GENESIS_AUTO_RESUME_DELAY_MS';
+
+/**
+ * How long recovery waits before attempt N — N × the base, so a second try
+ * gives a struggling provider twice the room the first did.
+ *
+ * The wait exists because the fault recovery most often meets is the API
+ * saying "Overloaded" (a 529), and an instant retry asks the same overloaded
+ * servers the same question in the same moment. Backing off is what turns two
+ * attempts from a formality into a real second chance. The base defaults to
+ * 15 seconds; tests set the variable to 0 and wait for nothing.
+ */
+export function autoResumeDelayMs(
+  attempt: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env[AUTO_RESUME_DELAY_ENV];
+  const base =
+    raw === undefined || raw.trim() === '' ? 15_000 : Number.parseInt(raw, 10);
+  if (Number.isNaN(base) || base < 0) return attempt * 15_000;
+  return attempt * Math.min(base, 120_000);
+}
+
 /** The file inside it. */
 export const CONFIG_FILE_NAME = 'config.json';
 
