@@ -434,7 +434,7 @@ for (const [subtype, needle] of [
     assert.equal(stdout, '', 'nothing was produced, so nothing may be printed as output');
     assert.match(stderr, /^exolvra-genesis: unexpected error while running "plan"\n/, stderr);
     assert.match(stderr, needle, stderr);
-    assert.match(stderr, /not a judgement of\n {2}the work/, stderr);
+    assert.match(stderr, /not a judgement of the work/, stderr);
     assert.match(stderr, /report it at https:\/\/github\.com\/\S+\/issues/, stderr);
     assert.ok(
       !stderr.includes('node is on PATH'),
@@ -579,7 +579,7 @@ test('C5: an error nothing classified is a blocked run, exit 1, and says so', ()
     stderr.includes('a command module could not be loaded'),
     'the fault itself must be reported: ' + stderr,
   );
-  assert.match(stderr, /not a judgement of\n {2}the work/, stderr);
+  assert.match(stderr, /not a judgement of the work/, stderr);
   assert.match(stderr, /report it at https:\/\/github\.com\/\S+\/issues/, stderr);
   // And no usage line. Every other error here ends with one, because retyping
   // the command is the remedy; this one has just said the opposite, so an

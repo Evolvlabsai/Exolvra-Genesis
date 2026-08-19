@@ -149,12 +149,24 @@ const STOP_SIGNALS: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
  * they are — a run blocked by a fault in this integration, never a verdict.
  */
 function isProgrammerFault(error: unknown): boolean {
+  // A SyntaxError from JSON.parse is not a programmer fault — it is torn
+  // DATA: the SDK parses the provider process's stdout line by line, and a
+  // process dying mid-write hands it half a JSON object. That is a stream
+  // fault to recover from, not a bug to report. (Found live: "Unterminated
+  // string in JSON at position 167" killed a run, skipped recovery, and hid
+  // its own origin behind the internal-error banner.)
+  if (error instanceof SyntaxError && /JSON/.test(error.message)) return false;
   return (
     error instanceof TypeError ||
     error instanceof ReferenceError ||
     error instanceof SyntaxError ||
     error instanceof RangeError
   );
+}
+
+/** A parse fault in the provider's own stream: torn output, not our code. */
+function isTornStream(error: unknown): boolean {
+  return error instanceof SyntaxError && /JSON/.test(error.message);
 }
 
 function terminationSignal(error: unknown): string | undefined {
@@ -246,6 +258,22 @@ export function createSession(opts: SessionOptions): Session {
       // that must not be dressed up as either. It leaves unwrapped, and the
       // entry point reports it in the frame an unclassified fault gets.
       if (isProgrammerFault(error)) throw error;
+      if (isTornStream(error)) {
+        // Whether or not a whole message ever arrived: a torn line means the
+        // provider WAS writing, so this is a run that did not finish — the
+        // recoverable kind — never a configuration to fix.
+        return {
+          status: 'error',
+          reason: 'failed',
+          sessionId,
+          turns: 0,
+          costUsd: 0,
+          text,
+          error:
+            "the provider's stream was cut mid-message: " +
+            (error instanceof Error ? error.message : String(error)),
+        };
+      }
       if (started) {
         // The provider produced messages and then failed. That is a run that
         // did not finish — a result, in this tool's terms — and it is reported

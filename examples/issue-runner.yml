@@ -63,9 +63,9 @@ concurrency:
 env:
   # Bump this when you want a newer loop. Pinned rather than floating, so a
   # release never changes what a scheduled pass does without you saying so.
-  # 0.8.2 is the release the runner arrives in; anything earlier has no `work`
+  # 0.8.3 is the release the runner arrives in; anything earlier has no `work`
   # command and answers this workflow with "unknown command".
-  EXOLVRA_GENESIS_VERSION: '0.8.2'
+  EXOLVRA_GENESIS_VERSION: '0.8.3'
   # The cost cap, in US dollars, for one issue.
   MAX_COST: '5'
 

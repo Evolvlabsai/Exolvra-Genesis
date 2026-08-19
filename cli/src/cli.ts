@@ -333,8 +333,17 @@ function report(error: unknown): void {
       first === undefined || first.startsWith('-')
         ? undefined
         : '"' + printable(first) + '"';
+    // The fault's location travels with the report — one line, in the house
+    // voice, never a stack dump (the error bar bans those from terminals). An
+    // internal fault whose location dies with the process cannot be filed.
+    const frame =
+      error instanceof Error && typeof error.stack === 'string'
+        ? error.stack.split('\n').find((line) => line.trim().startsWith('at '))
+        : undefined;
+    const site =
+      frame === undefined ? undefined : 'where: ' + frame.trim().replace(/^at\s+/, '');
     ctx.stderr.write(
-      renderInternalError(message === '' ? String(error) : message, command),
+      renderInternalError(message === '' ? String(error) : message, command, site),
     );
   }
   process.exitCode = code;

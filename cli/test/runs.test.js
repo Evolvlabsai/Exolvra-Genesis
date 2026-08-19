@@ -1334,6 +1334,41 @@ test('an abnormal end is re-driven automatically, bounded, and the env var turns
   );
 });
 
+test('a torn provider stream is a recoverable session fault, never an internal error', () => {
+  const dir = seed(fresh(), ledger());
+  const id = 'r-20260810-1712-c10e5f';
+
+  // The exact live failure: the claude process died mid-write, the SDK's
+  // parser threw a raw SyntaxError, and the old boundary rethrew it as a
+  // programmer fault — past recovery, into the internal-error banner.
+  const { code, stdout, stderr } = sandbox.run(
+    ['resume', id, '-C', dir, '--plugin-dir', REPO_ROOT],
+    {
+      subtype: 'json_tear_midstream',
+      cwd: dir,
+      env: {
+        EXOLVRA_GENESIS_AUTO_RESUMES: '2',
+        EXOLVRA_GENESIS_AUTO_RESUME_DELAY_MS: '0',
+      },
+    },
+  );
+  const all = stdout + stderr;
+  assert.equal(code, 1, 'a torn stream is a run that did not finish, exit 1:\n' + all);
+  assert.equal(
+    all.includes('unexpected error'),
+    false,
+    'torn provider output must never reach the internal-error banner:\n' + all,
+  );
+  assert.ok(
+    all.includes('stream was cut mid-message'),
+    'the fault must be named for what it is:\n' + all,
+  );
+  assert.ok(
+    all.includes('resuming automatically (attempt 1 of 2)'),
+    'a torn stream is exactly what recovery exists for:\n' + all,
+  );
+});
+
 test('a complete left over from before the turn is not this turn s verdict', () => {
   const dir = seed(fresh(), ledger());
   // Whatever was in the file before the turn started — an earlier run in the

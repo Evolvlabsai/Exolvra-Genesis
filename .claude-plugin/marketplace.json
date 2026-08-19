@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Marketplace for the Exolvra Genesis plugin — builders vs. blind critics against a concrete quality bar.",
-    "version": "0.8.2"
+    "version": "0.8.3"
   },
   "plugins": [
     {
       "name": "exolvra-genesis",
       "source": "./",
       "description": "Minimal Exolvra Genesis loop orchestrator — builder subagents iterate against blind, fresh-context critics until the work wins the comparison twice in a row.",
-      "version": "0.8.2",
+      "version": "0.8.3",
       "category": "workflow",
       "tags": [
         "orchestration",

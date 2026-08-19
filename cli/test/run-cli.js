@@ -147,6 +147,22 @@ export function query({ prompt, options }) {
       },
     };
   }
+  if (subtype === 'json_tear_midstream') {
+    // The provider process dies mid-write; the SDK's line parser throws the
+    // raw SyntaxError. The session boundary must read this as a torn stream
+    // (recoverable), never as a programmer fault to rethrow.
+    return {
+      async interrupt() {},
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'assistant',
+          session_id: 'sesn_fake',
+          message: { content: [{ type: 'text', text: 'started work' }] },
+        };
+        throw new SyntaxError('Unterminated string in JSON at position 167 (line 1 column 168)');
+      },
+    };
+  }
   if (subtype === 'midstream_then_success') {
     // Stateful across createSession calls INSIDE one CLI process: the first
     // session drops its stream, every later one completes. This is the shape

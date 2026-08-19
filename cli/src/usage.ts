@@ -1181,15 +1181,30 @@ export function renderHelpTopic(topic: HelpTopic): string {
  * user typed caused this and that the fault belongs in an issue, printing one
  * would send them to correct an invocation that was never wrong.
  */
-export function renderInternalError(message: string, command?: string): string {
+export function renderInternalError(
+  message: string,
+  command?: string,
+  site?: string,
+): string {
   const where = command === undefined ? '' : ' while running ' + printable(command);
   const lines: string[] = [
     PROGRAM + ': unexpected error' + where,
     ...printableBlock(message)
       .split('\n')
       .map((line) => '  ' + line),
-    '  the run was blocked before any verdict, so this is not a judgement of',
-    '  the work',
+    // Where it happened, because an internal fault whose location dies with
+    // the process is a bug report nobody can act on — one live crash went
+    // unattributable for exactly this reason.
+    ...(site === undefined
+      ? []
+      : printableBlock(site)
+          .split('\n')
+          .slice(0, 3)
+          .map((line) => '  ' + line.trim())),
+    // Truthful whatever the run did before the fault: it makes no claim about
+    // verdicts — the old wording said "before any verdict" to a run with four.
+    '  this is a fault in the tool, not a judgement of the work; anything the',
+    '  run settled before it — rounds, labels, state — still stands',
     '  if this looks like a bug, report it at ' + MANUAL_URL + '/issues',
     '',
   ];

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.3 — 2026-08-19
+
+- A torn provider stream is a recoverable fault, not a crash. The Agent SDK
+  parses its child process's output line by line, and a process dying
+  mid-write hands it half a JSON object as a raw SyntaxError — which the
+  session boundary classified as a programmer fault and rethrew past
+  recovery, into the internal-error banner, stack eaten. Found live
+  ("Unterminated string in JSON at position 167" ended a run that had just
+  judged four rounds). A JSON SyntaxError is now read as what it is — torn
+  data — and becomes a session error the automatic resume rides out.
+- The internal-error banner tells the truth and names the place: "blocked
+  before any verdict" (said to a run with four) is gone, replaced by a
+  sentence that stands whatever the run did first, plus a one-line house-voice
+  fault location — never a stack, which the error bar bans from terminals.
+
 ## 0.8.2 — 2026-08-18
 
 - An abnormal session end recovers itself. When a `run` or `resume` session
