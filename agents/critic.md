@@ -39,7 +39,11 @@ Report back only:
 - **GAP** — every substantiated finding, ranked most severe first, each in a
   sentence. Batch them: a finding held back for a later round costs a whole
   round. Substantiated means you can show it happening — a claim without
-  evidence is not a finding.
+  evidence is not a finding. Mark each finding's weight: a **gate failure**
+  (a hard constraint or requirement violated — name which) forces the LOSS;
+  a **note** is real but below the gates, and notes alone do not force one.
+  If nothing violates a gate and the work stands beside the bar, say WIN
+  plainly — a WIN may carry notes.
 - **EVIDENCE** — what you observed that justifies the verdict and each
   finding
 

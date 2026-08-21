@@ -50,6 +50,20 @@ reading it against itself and against the disk.
   already has to the `run` command's own endings.
 - **R4** Every gate's checks are recorded per round (in the trace, once it
   exists; in the round log regardless), so a green gate says what it looked at.
+- **R5 — Finding fingerprints, the see-saw rule as a mechanism.** Each
+  round's findings are normalized and hashed (finding text + the criterion or
+  gate it cites), and the candidate's diff is hashed beside them. The loop's
+  existing judgment rules then get mechanical triggers: the same fingerprints
+  over an unchanged diff mean the round was duplicated — do not dispatch a
+  builder for it; the same fingerprints recurring over a materially changed
+  diff for two rounds is the gap-survives signal, surfaced to the lead by
+  code rather than by memory; and two consecutive rounds whose fixes each
+  reintroduce the other's fingerprints is the see-saw, surfaced the same
+  way. The triggers inform the lead's judgment (run.md already owns the
+  response — change approach, question the spec); they never auto-stop a run
+  themselves. Origin: an external review (Codex, 2026-08-20) proposed the
+  hash; the loop had the rule as prose and had already paid five rounds to
+  learn it.
 
 ## Non-goals
 
