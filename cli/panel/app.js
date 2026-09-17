@@ -33,6 +33,7 @@ const storage = {
 };
 const state = { overview: null, csrf: null, lastUpdated: 0, error: null, route: '', filters: { search: '', status: '', project: '', kind: '' }, detail: null, detailEvents: new Map(), detailCursor: 0, hasEarlier: false, loadingEarlier: false, job: null, busy: false, tail: true, eventSnapshot: null, timer: null, theme: storage.get('theme', 'dark'), polling: storage.get('refresh', 'on') !== 'off' };
 Object.assign(state, { authenticated: false, requiresLogin: false, sessionChecked: false, authEpoch: 0, loginBusy: false });
+Object.assign(state, { detailTab: 'evidence', detailPiece: '', detailOpen: new Map(), sourceRequest: 0, modalReturnFocus: null });
 const money = (value) => value === null || value === undefined ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
 const count = (value) => new Intl.NumberFormat('en-US', { notation: Number(value) > 99999 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value || 0);
 const time = (value) => Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—';
@@ -57,7 +58,9 @@ function patch(id, html) {
   const selection = window.getSelection();
   if (element.contains(document.activeElement) || (selection && !selection.isCollapsed && element.contains(selection.anchorNode))) return;
   const scroll = $$('[data-preserve-scroll]', element).map((node) => [node.id, node.scrollTop, node.scrollLeft]);
+  $$('details[data-detail-key]', element).forEach((node) => state.detailOpen.set(node.dataset.detailKey, node.open));
   element.innerHTML = html; element._html = html;
+  $$('details[data-detail-key]', element).forEach((node) => { if (state.detailOpen.has(node.dataset.detailKey)) node.open = state.detailOpen.get(node.dataset.detailKey); });
   $$('[data-width]', element).forEach((bar) => { const width = Number.parseFloat(bar.dataset.width); if (Number.isFinite(width)) bar.style.width = Math.max(0, Math.min(100, width)) + '%'; });
   for (const [key, top, left] of scroll) { const node = document.getElementById(key); if (node) { node.scrollTop = top; node.scrollLeft = left; } }
 }
@@ -71,6 +74,7 @@ function lockWorkspace(message = '') {
   state.authEpoch++; state.authenticated = false; state.csrf = null;
   state.overview = null; state.detail = null; state.job = null; state.route = ''; state.lastUpdated = 0;
   state.detailEvents = new Map(); state.detailCursor = 0; state.eventSnapshot = null; state.error = null;
+  state.detailOpen.clear(); state.sourceRequest++;
   document.body.classList.remove('auth-pending'); document.body.classList.add('auth-locked');
   $('#auth-screen').hidden = false; $('#auth-loading').hidden = true; $('#login-form').hidden = false;
   $('#auth-title').textContent = 'Your shared workspace';
@@ -185,7 +189,7 @@ function runsTable(runs, compact = false) {
 }
 function activity(events, limit = 6) { return events.length ? '<div class="activity-list">' + events.slice(-limit).reverse().map((event) => '<a class="activity-item" href="#runs/' + encodeURIComponent(event.projectId) + '/' + encodeURIComponent(event.runId) + '"><span class="activity-symbol">' + icon(event.kind.includes('error') ? 'warning' : event.kind.includes('finished') ? 'check' : 'events') + '</span><div class="activity-copy"><h3>' + escape(event.summary || human(event.kind)) + '</h3><p>' + escape(event.piece || event.runId) + '</p></div><span class="activity-time">' + ago(event.at) + '</span></a>').join('') + '</div>' : empty('Quiet for now', 'Run events will appear here as work progresses.', 'events', '', true); }
 function jobTable(jobs) { return jobs.length ? '<div class="table-scroll"><table><thead><tr><th>Job</th><th>Project</th><th>Status</th><th>Created</th><th>Exit</th><th></th></tr></thead><tbody>' + [...jobs].sort((a, b) => b.createdAt - a.createdAt).map((job) => '<tr class="run-link" data-route="' + linkJob(job) + '"><td><a class="row-title" href="' + linkJob(job) + '">' + escape(human(job.action)) + '</a><span class="row-sub">' + escape(job.id) + '</span></td><td>' + escape(job.projectName) + '</td><td>' + badge(job.status) + '</td><td class="mono muted">' + ago(job.createdAt) + '</td><td class="mono">' + (job.exitCode ?? '—') + '</td><td>' + icon('arrow') + '</td></tr>').join('') + '</tbody></table></div>' : empty('No planning sessions yet', 'Preview a goal before starting a build. Plans here are actual CLI jobs and their output.', 'plans', button('Create a plan', 'new-plan', 'plus', true)); }
-function eventRows(events) { return events.map((event) => '<div class="event ' + (/error|fail|blocked/.test(event.kind) ? 'negative' : /complete|finished|win/.test(event.kind) ? 'positive' : '') + '"><span class="event-time" title="' + escape(date(event.at)) + '">' + time(event.at) + '</span><span class="event-kind">' + escape(human(event.kind)) + (event.round !== null ? '<br><span class="muted">round ' + event.round + '</span>' : '') + '</span><details><summary class="event-summary">' + escape(event.summary || human(event.kind)) + '</summary><pre>' + escape(JSON.stringify(event.payload, null, 2)) + '</pre></details></div>').join(''); }
+function eventRows(events) { return events.map((event) => '<div class="event ' + (/error|fail|blocked/.test(event.kind) ? 'negative' : /complete|finished|win/.test(event.kind) ? 'positive' : '') + '"><span class="event-time" title="' + escape(date(event.at)) + '">' + time(event.at) + '</span><span class="event-kind">' + escape(human(event.kind)) + (event.round !== null ? '<br><span class="muted">round ' + event.round + '</span>' : '') + '</span><details data-detail-key="' + escape(JSON.stringify(['event', event.projectId, event.runId, event.seq])) + '"><summary class="event-summary">' + escape(event.summary || human(event.kind)) + '</summary><pre>' + escape(JSON.stringify(event.payload, null, 2)) + '</pre></details></div>').join(''); }
 function eventControls(detail = false) { return '<div class="event-toolbar"><select data-filter="kind" aria-label="Filter event kind"><option value="">All events</option>' + ['activity', 'budget_spend', 'gate_check', 'verdict_recorded', 'error', 'stalled', 'process_event', 'run_finished'].map((kind) => '<option value="' + kind + '"' + (state.filters.kind === kind ? ' selected' : '') + '>' + escape(human(kind)) + '</option>').join('') + '</select><label class="checkbox-label"><input type="checkbox" id="tail-events"' + (state.tail ? ' checked' : '') + '> Follow</label>' + (detail ? '' : button('Export', 'export-events', 'export')) + '</div>'; }
 function eventFilter(events) { return events.filter((event) => (!state.filters.kind || event.kind === state.filters.kind) && (!state.filters.project || event.projectId === state.filters.project) && (!state.filters.search || [event.summary, event.kind, event.runId, event.piece].join(' ').toLowerCase().includes(state.filters.search.toLowerCase()))); }
 function updateEvents(events, id = 'events-list') {
@@ -210,6 +214,7 @@ function renderRoute() {
   const route = location.hash.slice(1) || 'operations';
   if (route === state.route) return;
   state.route = route; state.detail = null; state.detailEvents = new Map(); state.detailCursor = 0; state.hasEarlier = false; state.job = null; state.filters = { search: '', status: '', project: '', kind: '' }; state.eventSnapshot = null; state.tail = true;
+  state.detailTab = 'evidence'; state.detailPiece = ''; state.detailOpen.clear(); state.sourceRequest++;
   const [page, first, second] = route.split('/').map(decodePart);
   const active = page === 'jobs' ? 'plans' : page;
   $$('.nav-link').forEach((node) => { const selected = node.dataset.nav === active; node.classList.toggle('active', selected); if (selected) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current'); });
@@ -218,7 +223,7 @@ function renderRoute() {
   $('#sidebar').classList.remove('open'); $('#menu-toggle').setAttribute('aria-expanded', 'false');
   let html;
   if (page === 'operations') html = heading('Operations', 'A live view of your builds, agents and execution evidence.', actions([button('Create plan', 'new-plan', 'plans'), button('Start a run', 'new-run', 'plus', true)]), 'Control plane') + '<div id="overview-stats"></div><div class="grid-main"><div><section class="panel"><div class="panel-head"><div class="title-group"><h2>Recent runs</h2><span class="count" id="recent-count"></span></div><a class="text-button" href="#runs">View all runs ↗</a></div>' + runFilters() + '<div id="runs-table"></div><div class="panel-footer"><span>Latest local run records</span><span id="recent-source"></span></div></section><div id="active-jobs" class="stack-space"></div></div><aside class="right-column"><div id="recent-activity"></div><div id="workspace-card"></div></aside></div>';
-  else if (page === 'runs' && first && second) html = '<a class="back-link" href="#runs">' + icon('back') + 'All runs</a><div id="run-heading"></div><div id="run-warnings"></div><div class="detail-layout"><div class="detail-main"><div id="run-lifecycle"></div><section class="panel"><div class="panel-head"><div class="title-group"><h2>Execution events</h2><span id="event-count" class="count">0</span></div>' + eventControls(true) + '</div><div class="panel-footer"><button class="text-button" data-action="older-events" id="older-events" disabled>Load older events</button><span id="event-evidence">Reading trace…</span></div><div class="events" id="events-list" data-preserve-scroll></div></section><div id="run-pieces" class="stack-space"></div></div><aside class="right-column"><div id="run-budget"></div><div id="run-context"></div><div id="run-processes"></div><div id="run-artifacts"></div></aside></div>';
+  else if (page === 'runs' && first && second) html = '<a class="back-link" href="#runs">' + icon('back') + 'All runs</a><div id="run-heading"></div><div id="run-summary"></div><div id="run-warnings"></div><div class="detail-layout"><div class="detail-main">' + runWorkspace() + '</div><aside class="right-column"><div id="run-budget"></div><div id="run-context"></div><div id="run-processes"></div><div id="run-artifacts"></div></aside></div>';
   else if (page === 'runs') html = heading('Runs', 'Every build, its outcome and the evidence behind it.', actions([button('Export JSON', 'export-runs', 'export'), button('Start a run', 'new-run', 'plus', true)]), 'Execution') + '<div id="overview-stats"></div><section class="panel"><div class="panel-head"><div class="title-group"><h2>Run history</h2><span class="count" id="recent-count"></span></div><span class="subheading">ALL REGISTERED PROJECTS</span></div>' + runFilters() + '<div id="runs-table"></div><div class="panel-footer"><span id="run-results"></span><span>Provider-reported spend</span></div></section>';
   else if (page === 'plans') html = heading('Plans', 'Preview the quality bar and decomposition before building.', actions([button('Create a plan', 'new-plan', 'plus', true)]), 'Intent → execution') + '<div id="plans-list"></div><div id="other-jobs" class="stack-space"></div>';
   else if (page === 'jobs' && first) html = '<a class="back-link" href="#plans">' + icon('back') + 'Command jobs</a><div id="job-heading"></div><div class="detail-layout"><div id="job-output"></div><aside id="job-info"></aside></div>';
@@ -298,11 +303,131 @@ async function fetchDetail(projectId, id, initial = false, older = false) {
   } catch (error) { if (route === state.route) { patch('run-warnings', '<div class="warning-note">' + escape(error.message) + ' ' + button('Retry', 'retry-detail', 'refresh') + '</div>'); if (!state.detail) patch('run-heading', heading('Run unavailable', 'Its local record could not be read.')); } }
   finally { state.loadingEarlier = false; }
 }
+function runWorkspace() {
+  const tabs = [['evidence', 'Evidence', 'file'], ['rounds', 'Round history', 'clock'], ['events', 'Events', 'events']];
+  return '<div class="run-tabs" role="tablist" aria-label="Run evidence workspace">' + tabs.map(([id, label, symbol], index) => '<button type="button" class="run-tab" id="run-tab-' + id + '" role="tab" aria-controls="run-pane-' + id + '" aria-selected="' + (index === 0) + '" tabindex="' + (index === 0 ? '0' : '-1') + '" data-action="run-tab" data-tab="' + id + '">' + icon(symbol) + label + '</button>').join('') + '</div>' +
+    '<section id="run-pane-evidence" class="run-pane" role="tabpanel" aria-labelledby="run-tab-evidence" tabindex="0"><div id="run-evidence-toolbar"></div><div id="run-evidence-body"></div></section>' +
+    '<section id="run-pane-rounds" class="run-pane" role="tabpanel" aria-labelledby="run-tab-rounds" tabindex="0" hidden><div id="run-rounds"></div><div id="run-pieces" class="stack-space"></div></section>' +
+    '<section id="run-pane-events" class="run-pane" role="tabpanel" aria-labelledby="run-tab-events" tabindex="0" hidden><div id="run-lifecycle"></div><section class="panel stack-space"><div class="panel-head event-panel-head"><div class="title-group"><h2>Execution events</h2><span id="event-count" class="count">0</span></div>' + eventControls(true) + '</div><div class="panel-footer"><button class="text-button" data-action="older-events" id="older-events" disabled>Load older events</button><span id="event-evidence">Reading trace…</span></div><div class="events" id="events-list" data-preserve-scroll></div></section></section>';
+}
+function selectRunTab(tab, focus = false) {
+  if (!['evidence', 'rounds', 'events'].includes(tab)) return;
+  state.detailTab = tab;
+  $$('.run-tab').forEach((node) => { const selected = node.dataset.tab === tab; node.setAttribute('aria-selected', String(selected)); node.tabIndex = selected ? 0 : -1; });
+  $$('.run-pane').forEach((node) => { node.hidden = node.id !== 'run-pane-' + tab; });
+  if (focus) $('#run-tab-' + tab)?.focus();
+}
+function sourceButton(source, label = 'Source') {
+  const run = state.detail?.run;
+  if (!run || !Number.isSafeInteger(source?.seq) || source.seq < 1) return '';
+  return '<button type="button" class="evidence-source" data-action="evidence-source" data-seq="' + source.seq + '" data-project="' + escape(run.projectId) + '" data-run="' + escape(run.id) + '" title="' + escape(human(source.kind) + ' · ' + date(source.at)) + '" aria-label="' + escape('Open ' + human(source.kind) + ', event ' + source.seq) + '">' + icon('external') + escape(label) + ' <span>#' + source.seq + '</span></button>';
+}
+function factCard(label, fact, className = '', action = '') {
+  const origin = label === 'Outcome' ? 'Recorded run state' : label === 'Next action' ? 'Suggested next step' : 'Not recorded';
+  return '<article class="brief-card ' + className + '"><h2>' + escape(label) + '</h2><p>' + escape(fact?.text || 'No evidence recorded.') + '</p><div class="brief-foot">' + (sourceButton(fact?.source) || '<span class="evidence-origin">' + origin + '</span>') + action + '</div></article>';
+}
+function renderRunSummary(detail) {
+  const run = detail.run, summary = detail.evidence?.summary;
+  const outcomeTone = run.status === 'complete' ? 'complete' : run.status === 'blocked' || run.stalled ? 'attention' : run.status === 'running' ? 'running' : 'neutral';
+  const options = 'data-project="' + escape(run.projectId) + '" data-run="' + escape(run.id) + '"';
+  let action = '';
+  if (summary?.nextAction.action === 'resume' && run.canResume) action = button('Resume run', 'resume-run', 'runs', true, options);
+  else if (summary?.nextAction.action === 'stop' && run.canStop) action = button('Stop run', 'stop-run', 'stop', false, options);
+  else if (summary?.nextAction.action === 'new-run') action = button('New run', 'new-run', 'plus', false, options);
+  else if (summary?.nextAction.action === 'review') action = button('Review evidence', 'run-tab', 'arrow', false, 'data-tab="evidence"');
+  patch('run-summary', '<section class="run-brief" aria-label="Run summary">' +
+    factCard('Outcome', summary?.outcome || { text: 'Recorded status: ' + human(run.status) + '. Outcome evidence is unavailable.', source: null }, 'brief-outcome outcome-' + outcomeTone) +
+    factCard('Current activity', summary?.currentActivity, 'brief-activity') +
+    factCard('Blocking reason', summary?.blockingReason || { text: 'No blocking reason recorded.', source: null }, summary?.blockingReason ? 'brief-blocker' : '') +
+    factCard('Next action', summary?.nextAction || { text: 'Review the available records before deciding how to continue.', source: null }, 'brief-next', action) + '</section>');
+}
+const roundLabel = (round) => (round.piece === null ? 'Unassigned piece' : round.piece) + ' · ' + (round.round === null ? 'Round not recorded' : 'Round ' + round.round);
+const roundKey = (round) => JSON.stringify(['round', round.piece, round.round]);
+function missingEvidence(message) { return '<p class="evidence-missing">' + icon('file') + '<span>' + escape(message) + '</span></p>'; }
+function fileEvidence(round) {
+  if (!round.files.length) return missingEvidence('No changed paths are present in this round’s evidence.');
+  return '<ul class="evidence-files">' + round.files.map((file) => '<li><div class="file-evidence-copy">' + icon('file') + '<code>' + escape(file.path) + '</code></div><div class="evidence-meta"><span class="evidence-authority' + (file.restored === true ? ' restored' : '') + '">' + (file.restored === true ? 'Restored by guard' : file.kind === 'observed' ? 'Observed change' : 'Builder reported') + '</span>' + sourceButton(file.source) + '</div></li>').join('') + '</ul>';
+}
+function verificationEvidence(round) {
+  if (!round.verification.length) return missingEvidence('No verification or command results recorded for this round.');
+  const authority = (entry) => {
+    if (entry.authority === 'guard') return 'Guard observed';
+    const role = { builder: 'Builder', lead: 'Lead', critic: 'Critic' }[entry.authority];
+    if (!role) return 'Source unspecified';
+    return role + (entry.status === 'reported' || entry.source.kind === 'builder_round_ended' ? ' reported' : entry.source.kind === 'activity' ? ' command · Observed' : ' record');
+  };
+  return '<div class="evidence-records">' + round.verification.map((entry) => '<article class="evidence-record"><div class="evidence-record-head"><h3>' + escape(entry.name || 'Recorded check') + '</h3><span class="evidence-status ' + escape(entry.status) + '">' + escape(human(entry.status)) + '</span></div><div class="evidence-meta"><span class="evidence-authority">' + escape(authority(entry)) + '</span>' + sourceButton(entry.source) + '</div>' + (entry.command ? '<code class="evidence-command">' + escape(entry.command) + '</code>' : '') + (entry.detail ? '<p class="evidence-copy">' + escape(entry.detail) + '</p>' : missingEvidence('No result detail recorded.')) + '</article>').join('') + '</div>';
+}
+function findingEvidence(round) {
+  if (!round.findings.length) return missingEvidence('No critic findings recorded for this round.');
+  return '<div class="evidence-records">' + round.findings.map((finding) => '<article class="evidence-record"><div class="evidence-record-head">' + badge(finding.verdict) + sourceButton(finding.source) + '</div><h3 class="finding-gap">' + escape(finding.gap || 'No gap description recorded.') + '</h3>' + (finding.evidence ? '<p class="evidence-copy">' + escape(finding.evidence) + '</p>' : missingEvidence('No supporting critic evidence recorded.')) + '</article>').join('') + '</div>';
+}
+function roundSources(round) {
+  if (!round) return '';
+  const sources = new Map([...round.files, ...round.verification, ...round.findings].map((entry) => [entry.source.seq, entry.source]));
+  return [...sources.values()].sort((a, b) => a.seq - b.seq).map((source) => sourceButton(source)).join('') || '<span class="evidence-origin">No source available</span>';
+}
+function comparisonEvidence(round, rounds) {
+  const comparison = round.comparison;
+  if (!comparison) return missingEvidence(round.piece === null || round.round === null ? 'A same-piece comparison needs a recorded piece and round.' : 'No earlier comparable round recorded for this piece.');
+  const previous = rounds.find((item) => item.piece === round.piece && item.round === comparison.previousRound);
+  if (!previous || previous.piece === null || round.piece === null) return missingEvidence('The prior round for this piece is unavailable.');
+  const list = (title, values, fallback) => '<div class="comparison-list"><h4>' + escape(title) + '<span>' + values.length + '</span></h4>' + (values.length ? '<ul>' + values.map((value) => '<li>' + escape(value) + '</li>').join('') + '</ul>' : '<p>' + escape(fallback) + '</p>') + '</div>';
+  return '<section class="round-comparison"><div class="comparison-heading"><h3>Changes since round ' + escape(comparison.previousRound) + '</h3><span class="evidence-authority">Same piece only</span></div>' +
+    '<p class="evidence-caption">These compare recorded reports. A missing path does not mean a file was deleted; a finding no longer reported is not proof it was fixed.</p>' +
+    (comparison.candidateChanged === null || !comparison.candidateSources ? missingEvidence('Candidate identity was not recorded in both rounds.') : '<div class="candidate-evidence">' + icon('file') + '<span>' + (comparison.candidateChanged ? 'Recorded candidate identity changed.' : 'Recorded candidate identity stayed the same.') + '</span><div class="evidence-meta">' + sourceButton(comparison.candidateSources.previous, 'Previous') + sourceButton(comparison.candidateSources.current, 'Current') + '</div></div>') +
+    (comparison.filesComparable ? '<div class="comparison-grid">' + list('New in file report', comparison.addedFiles, 'No new paths in the file report.') + list('No longer in file report', comparison.removedFiles, 'No paths absent from the later report.') + '</div>' : missingEvidence('Both rounds need file evidence before their reports can be compared.')) +
+    (comparison.findingsComparable ? '<div class="comparison-grid findings-comparison">' + list('Repeated findings', comparison.repeatedFindings, 'No matching finding text.') + list('Newly reported', comparison.newFindings, 'No new finding text.') + list('No longer reported', comparison.noLongerReported, 'No earlier finding text absent.') + '</div>' : missingEvidence('Both rounds need critic findings before their reports can be compared.')) +
+    '<div class="comparison-sources"><div><span>Round ' + escape(comparison.previousRound) + ' sources</span><div class="evidence-meta">' + roundSources(previous) + '</div></div><div><span>This round’s sources</span><div class="evidence-meta">' + roundSources(round) + '</div></div></div></section>';
+}
+function latestEvidenceRounds(rounds) {
+  const latest = new Map(), unattributed = [];
+  for (const round of rounds) {
+    if (round.piece === null || round.round === null) unattributed.push(round);
+    else if (!latest.has(round.piece) || round.round > latest.get(round.piece).round) latest.set(round.piece, round);
+  }
+  return [...latest.values(), ...unattributed];
+}
+function renderEvidenceWorkspace(detail) {
+  const evidence = detail.evidence, rounds = evidence?.rounds || [];
+  if (!rounds.length) {
+    const unavailable = empty('Run evidence is not available yet', 'Older runs may not contain file reports, verification results or critic findings. The Events tab and saved artifacts remain available; missing records do not establish a successful result.', 'file', button('Inspect events', 'run-tab', 'events', false, 'data-tab="events"'));
+    patch('run-evidence-toolbar', ''); patch('run-evidence-body', panel('Recorded evidence', unavailable));
+    patch('run-rounds', panel('Round history', empty('No round evidence recorded', 'Round history appears when the trace identifies work and its supporting evidence.', 'clock', '', true)));
+    return;
+  }
+  const latest = latestEvidenceRounds(rounds), pieces = [...new Set(latest.map((round) => round.piece))];
+  if (state.detailPiece && !pieces.some((piece) => JSON.stringify(piece) === state.detailPiece)) state.detailPiece = '';
+  const shown = latest.filter((round) => !state.detailPiece || JSON.stringify(round.piece) === state.detailPiece);
+  const section = (title, field, render) => panel(title, '<div class="evidence-section">' + shown.map((round) => '<section class="piece-evidence"><h3 class="piece-evidence-heading">' + escape(roundLabel(round)) + '</h3>' + render(round) + '</section>').join('') + '</div>', { count: shown.reduce((total, round) => total + round[field].length, 0) + (field === 'files' ? ' file records' : '') });
+  patch('run-evidence-toolbar', '<div class="evidence-intro"><div><h2>Latest evidence by piece</h2><p>Each piece’s latest attributed round, with unassigned records kept separate.</p></div><label class="evidence-piece-filter"><span>Piece</span><select id="evidence-piece" aria-label="Filter latest evidence by piece"><option value="">All pieces</option>' + pieces.map((piece) => '<option value="' + escape(JSON.stringify(piece)) + '"' + (state.detailPiece === JSON.stringify(piece) ? ' selected' : '') + '>' + escape(piece === null ? 'Unassigned piece' : piece) + '</option>').join('') + '</select></label></div>' +
+    '<p class="evidence-caption">Observed changes come from ownership snapshots; builder reports are claims. Recorded command output alone does not establish verification.</p>');
+  patch('run-evidence-body', section('Changed files', 'files', fileEvidence) + section('Verification & command results', 'verification', verificationEvidence) + section('Critic findings', 'findings', findingEvidence) +
+    shown.filter((round) => round.missing.length).map((round) => '<div class="round-missing"><h3>' + escape(roundLabel(round)) + ' · Missing evidence</h3><ul>' + round.missing.map((message) => '<li>' + escape(message) + '</li>').join('') + '</ul></div>').join(''));
+  patch('run-rounds', '<div class="evidence-intro"><div><h2>Round history</h2><p>Open a round to inspect its evidence and compare reports for the same piece.</p></div><span class="count">' + rounds.length + ' recorded</span></div>' + [...rounds].reverse().map((round) => '<details class="round-history panel" data-detail-key="' + escape(roundKey(round)) + '"><summary><span class="round-summary-icon">' + icon('arrow') + '</span><span class="round-summary-copy"><strong>' + escape(roundLabel(round)) + '</strong><span>' + (round.startedAt ? escape(date(round.startedAt)) : 'Start time unavailable') + '</span></span><span class="round-summary-counts">' + round.files.length + ' file records · ' + round.verification.length + ' checks · ' + round.findings.length + ' findings</span></summary><div class="round-history-body">' + comparisonEvidence(round, rounds) + '<section class="history-evidence"><h3>Changed files</h3>' + fileEvidence(round) + '</section><section class="history-evidence"><h3>Verification & command results</h3>' + verificationEvidence(round) + '</section><section class="history-evidence"><h3>Critic findings</h3>' + findingEvidence(round) + '</section>' + (round.missing.length ? '<div class="round-missing"><h3>Missing evidence</h3><ul>' + round.missing.map((message) => '<li>' + escape(message) + '</li>').join('') + '</ul></div>' : '') + '</div></details>').join(''));
+}
+async function openEvidenceSource(element) {
+  const seq = Number(element.dataset.seq), projectId = element.dataset.project, runId = element.dataset.run, route = state.route;
+  if (!Number.isSafeInteger(seq) || seq < 1 || state.detail?.run.id !== runId || state.detail.run.projectId !== projectId) return;
+  modal('Trace source #' + seq, 'Reading the exact recorded event.', '<p class="evidence-caption" role="status">Loading source evidence…</p>', button('Close', 'close-modal'));
+  const request = state.sourceRequest;
+  try {
+    const query = new URLSearchParams({ projectId, after: String(seq - 1), limit: '1' });
+    const result = await api('/api/runs/' + encodeURIComponent(runId) + '?' + query);
+    if (route !== state.route || request !== state.sourceRequest || !state.authenticated || !$('#modal').open) return;
+    const event = result.events.find((entry) => entry.seq === seq && entry.runId === runId && entry.projectId === projectId);
+    if (!event) throw new Error('This exact event is no longer available. The trace may be incomplete or rotated; another event has not been substituted.');
+    modal('Trace source #' + seq, human(event.kind) + ' · ' + date(event.at), '<p class="evidence-caption">Original recorded event · ' + escape(runId) + '</p><pre class="source-payload">' + escape(JSON.stringify(event, null, 2)) + '</pre>', button('Close', 'close-modal'));
+  } catch (error) {
+    if (route === state.route && request === state.sourceRequest && state.authenticated && $('#modal').open) modal('Source unavailable', 'The requested event could not be read.', '<p class="evidence-copy">' + escape(error.message) + '</p>', button('Close', 'close-modal'));
+  }
+}
 function renderRunDetail() {
   const detail = state.detail; if (!detail) return;
   const run = detail.run, options = 'data-project="' + escape(run.projectId) + '" data-run="' + escape(run.id) + '"';
   patch('run-heading', '<div class="page-heading detail-heading"><div><div class="eyebrow">' + escape(run.projectName) + ' / execution</div><div class="detail-title"><h1>' + escape(run.input || run.id) + '</h1>' + badge(run.stalled ? 'stalled' : run.status) + '</div><div class="run-id">' + escape(run.id) + '</div></div>' + actions([button('Export', 'export-run', 'export'), ...(run.canResume ? [button('Resume', 'resume-run', 'runs', true, options)] : []), ...(run.canStop ? [button('Stop run', 'stop-run', 'stop', false, options)] : [])]) + '</div>');
-  patch('run-warnings', [...detail.warnings, ...(detail.degraded ? ['Some trace data is unavailable. This view may show only the last written state.'] : [])].map((text) => '<div class="warning-note">' + escape(text) + '</div>').join(''));
+  renderRunSummary(detail); renderEvidenceWorkspace(detail); selectRunTab(state.detailTab);
+  patch('run-warnings', [...new Set([...detail.warnings, ...(detail.evidence?.warnings || []), ...(detail.evidence?.truncated ? ['The evidence summary is bounded; some older records may be omitted. Use event paging and saved artifacts to inspect the available trace.'] : []), ...(detail.degraded ? ['Some trace data is unavailable. This view may show only the last written state.'] : [])])].map((text) => '<div class="warning-note">' + escape(text) + '</div>').join(''));
   const phase = run.phase.toLowerCase(), activeStage = run.status === 'complete' ? 4 : /critic|judg|verdict/.test(phase) ? 3 : /verif|gate/.test(phase) ? 2 : /build|round/.test(phase) ? 1 : /initial|start|preflight|planning/.test(phase) ? 0 : -1;
   const phaseLabel = activeStage < 0 ? human(run.status) + ' ? latest execution phase unavailable' : human(run.phase);
   patch('run-lifecycle', panel('Run lifecycle', '<div class="lifecycle">' + ['Initialize', 'Build', 'Verify', 'Judge', 'Complete'].map((name, index) => '<div class="stage' + (index <= activeStage ? ' reached' : '') + (index === activeStage ? ' current' : '') + '"><span>' + (index < activeStage ? '✓' : index + 1) + '</span>' + name + '</div>').join('') + '</div>', { action: '<span class="subheading">' + escape(phaseLabel) + '</span>' }));
@@ -334,10 +459,15 @@ function renderJob() {
 }
 
 function modal(title, description, body, footer, formId) {
+  state.sourceRequest++;
   const dialog = $('#modal');
+  if (!dialog.open) {
+    const node = document.activeElement;
+    state.modalReturnFocus = { node, route: state.route, id: node?.id, data: { ...node?.dataset } };
+  }
   $('#modal-content').innerHTML = (formId ? '<form id="' + formId + '">' : '') + '<div class="modal-head"><div><h2 id="modal-title">' + escape(title) + '</h2><p>' + escape(description) + '</p></div><button type="button" class="icon-button" data-action="close-modal" aria-label="Close dialog">' + icon('close') + '</button></div><div class="modal-body"><div id="form-error" class="form-error" role="alert" hidden></div>' + body + '</div><div class="modal-footer">' + footer + '</div>' + (formId ? '</form>' : '');
   if (!dialog.open) dialog.showModal();
-  const first = $('input:not([type=hidden]),textarea,select', dialog); first?.focus();
+  const first = $('input:not([type=hidden]),textarea,select', dialog) || $('button', dialog); first?.focus({ preventScroll: true });
 }
 function formError(error) { const node = $('#form-error'); if (node) { node.textContent = error.message || String(error); node.hidden = false; } else notify(error.message || String(error), true); }
 function modelOptions(values, selected = 'inherit') { return values.map((value) => { const item = typeof value === 'string' ? { value, label: value } : value; return '<option value="' + escape(item.value) + '"' + (item.value === selected ? ' selected' : '') + '>' + escape(item.label) + '</option>'; }).join(''); }
@@ -377,6 +507,7 @@ document.addEventListener('input', (event) => { if (event.target.dataset.filter 
 document.addEventListener('change', (event) => {
   const target = event.target;
   if (target.dataset.filter) { state.filters[target.dataset.filter] = target.value; refreshView(); }
+  else if (target.id === 'evidence-piece') { state.detailPiece = target.value; if (state.detail) renderEvidenceWorkspace(state.detail); }
   else if (target.id === 'tail-events') { state.tail = target.checked; if (state.tail) { state.eventSnapshot = null; refreshView(); } }
   else if (target.id === 'theme-select') setTheme(target.value);
   else if (target.id === 'refresh-toggle') { state.polling = target.checked; storage.set('refresh', state.polling ? 'on' : 'off'); if (state.polling) void refresh(true); }
@@ -385,7 +516,12 @@ document.addEventListener('click', async (event) => {
   const element = event.target.closest('[data-action]');
   if (!element) { const row = event.target.closest('[data-route]'); if (row && !event.target.closest('a,button,input,select,details') && !window.getSelection()?.toString()) location.hash = row.dataset.route; return; }
   const action = element.dataset.action, projectId = element.dataset.project, runId = element.dataset.run;
+  // Touch activation does not consistently focus buttons. Remember a usable
+  // opener before a dialog replaces its own contents or a poll replaces a row.
+  if (!$('#modal').open && element.matches('button')) element.focus({ preventScroll: true });
   if (action === 'close-modal') $('#modal').close();
+  else if (action === 'run-tab') selectRunTab(element.dataset.tab, element.getAttribute('role') !== 'tab');
+  else if (action === 'evidence-source') await openEvidenceSource(element);
   else if (action === 'new-run' || action === 'new-plan') openJob(action === 'new-plan' ? 'plan' : 'run', projectId);
   else if (action === 'goal-run') openJob('run', projectId, element.dataset.goal);
   else if (action === 'research-decisions') openResearch(projectId);
@@ -411,8 +547,24 @@ document.addEventListener('click', async (event) => {
   }
 });
 document.addEventListener('keydown', (event) => {
+  const tab = event.target.closest('.run-tab');
+  if (tab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault(); const tabs = ['evidence', 'rounds', 'events'], current = tabs.indexOf(tab.dataset.tab);
+    selectRunTab(tabs[event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (current + (event.key === 'ArrowRight' ? 1 : 2)) % tabs.length], true);
+  }
   if (event.key === 'Escape') { $('#sidebar').classList.remove('open'); $('#menu-toggle').setAttribute('aria-expanded', 'false'); }
   if (event.key === '/' && !event.metaKey && !event.ctrlKey && !$('#modal').open && !event.target.matches('input,textarea,select,[contenteditable]')) { const search = $('input[type=search]'); if (search) { event.preventDefault(); search.focus(); } }
+});
+document.addEventListener('toggle', (event) => { const node = event.target; if (node.isConnected && node.matches('details[data-detail-key]')) state.detailOpen.set(node.dataset.detailKey, node.open); }, true);
+$('#modal').addEventListener('close', () => {
+  state.sourceRequest++;
+  const saved = state.modalReturnFocus; state.modalReturnFocus = null;
+  if (!saved || saved.route !== state.route || !state.authenticated) return;
+  const visible = (node) => node?.isConnected && node.getClientRects().length > 0 && !node.disabled;
+  let opener = visible(saved.node) ? saved.node : saved.id ? document.getElementById(saved.id) : null;
+  if (!visible(opener) && saved.data.action) opener = $$('[data-action]').find((node) => visible(node) && Object.entries(saved.data).every(([key, value]) => node.dataset[key] === value));
+  if (!visible(opener)) opener = $('.run-tab[aria-selected=true]') || $('#main');
+  opener?.focus({ preventScroll: true });
 });
 $('#modal').addEventListener('click', (event) => { if (event.target === $('#modal')) { const rect = $('#modal').getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) $('#modal').close(); } });
 window.addEventListener('hashchange', () => { renderRoute(); });

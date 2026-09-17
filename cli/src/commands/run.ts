@@ -5,7 +5,7 @@ import { renderLeadPrompt } from '../agents.js';
 import { coordinatorFlag, coordinatorEnv, createDistributedLead, type DistributedLead } from '../distributed-lead.js';
 import { RoundCoordinator } from '../distributed.js';
 import { type TraceStore, openTrace } from '../trace-store.js';
-import { toRecord, type BudgetSpendPayload } from '../trace-events.js';
+import { toRecord, type BudgetSpendPayload, type BuilderRoundEndedPayload, type RunObservation } from '../trace-events.js';
 import { recordPreflight } from '../run-evidence.js';
 import { preflightReceipt, preflightSpendDetail, type ExecutionPreflight } from '../preflight.js';
 import {
@@ -355,25 +355,47 @@ export function observeSubagentBlocks(
       const outcome: 'complete' | 'failed' = block.is_error ? 'failed' : 'complete';
 
       // Emit builder_round_ended for builders
+      const content = typeof block.content === 'string' ? block.content : Array.isArray(block.content)
+        ? block.content.map((part: { type?: string; text?: string }) => part?.type === 'text' ? part.text ?? '' : '').join('\n') : '';
+      const sections = reportSections(content);
       if (pending.role === 'builder') {
-        const content = typeof block.content === 'string' ? block.content : Array.isArray(block.content)
-          ? block.content.map((part: { type?: string; text?: string }) => part?.type === 'text' ? part.text ?? '' : '').join('\n') : '';
-        const verification = reportSections(content)['VERIFICATION']?.trim();
-        trace.append(
-          toRecord(
-            {
-              kind: 'builder_round_ended',
-              piece: pending.piece,
-              round: pending.round ?? undefined,
-              payload: {
-                attempt: pending.attempt,
-                verbatimVerification: !block.is_error && Boolean(verification),
-                ...(verification ? { verificationOutput: verification } : {}),
-              },
-            },
-            { runId },
-          ),
-        );
+        const verification = sections['VERIFICATION']?.trim();
+        const lines = (section: string | undefined): string[] => (section ?? '').split(/\r?\n/)
+          .map((line) => line.trim()).filter((line) => line !== '' && !line.startsWith('```'))
+          .map((line) => line.replace(/^[-*]\s+/, '').replace(/^`([^`]+)`$/, '$1'));
+        const reportedFiles = lines(sections['FILES CHANGED']).filter((line) => !/^(?:none|no files changed)[.!]?$/i.test(line))
+          .map((line) => (line.match(/`([^`]+)`/)?.[1] ?? line.replace(/\s+(?:—|–| - |\().*$/, '')).replace(/\s*\(deleted\)\s*$/i, '').trim().replaceAll('\\', '/'));
+        const payload = toRecord({ kind: 'builder_round_ended', payload: {
+          attempt: pending.attempt, verbatimVerification: !block.is_error && Boolean(verification), source: 'builder-report',
+          ...(sections['FILES CHANGED'] === undefined ? {} : { reportedFiles }),
+          ...(sections['COMMANDS RUN'] === undefined ? {} : { verificationCommands: lines(sections['COMMANDS RUN']) }),
+          ...(verification ? { verificationOutput: verification } : {}),
+        } }, { runId }).payload as unknown as BuilderRoundEndedPayload;
+        // Limit only after redaction. Long reports remain explicitly incomplete.
+        for (const key of ['reportedFiles', 'verificationCommands'] as const) {
+          const entries = payload[key];
+          if (entries && (entries.length > 1000 || entries.some((value) => value.length > 4000))) {
+            payload[key] = entries.slice(0, 1000).map((value) => value.slice(0, 4000)); payload.truncated = true;
+          }
+        }
+        if (payload.verificationOutput && payload.verificationOutput.length > 16000) {
+          payload.verificationOutput = payload.verificationOutput.slice(0, 16000); payload.truncated = true;
+        }
+        trace.append(toRecord({ kind: 'builder_round_ended', piece: pending.piece, round: pending.round ?? undefined, payload }, { runId }));
+      } else {
+        const verdict = sections['VERDICT']?.trim().match(/^(WIN|LOSS|BLOCKED)\b/)?.[1] as Verdict | undefined;
+        const evidence = toRecord({ kind: 'activity',
+          payload: { detail: 'Critic report received', evidence: { type: 'critic_report', source: 'critic-report', criticId: block.tool_use_id,
+            ...(verdict === undefined ? {} : { verdict }),
+            ...(sections['GAP'] === undefined ? {} : { gap: sections['GAP'].trim() }),
+            ...(sections['EVIDENCE'] === undefined ? {} : { evidence: sections['EVIDENCE'].trim() }),
+            ...(typeof block.is_error === 'boolean' ? { isError: block.is_error } : {}),
+          } } }, { runId }).payload['evidence'] as Extract<RunObservation, { type: 'critic_report' }>;
+        for (const key of ['gap', 'evidence'] as const) {
+          if (evidence[key] && evidence[key]!.length > 16000) { evidence[key] = evidence[key]!.slice(0, 16000); evidence.truncated = true; }
+        }
+        trace.append(toRecord({ kind: 'activity', piece: pending.piece, round: pending.round ?? undefined,
+          payload: { detail: 'Critic report received', evidence } }, { runId }));
       }
 
       // Close process row (R2)

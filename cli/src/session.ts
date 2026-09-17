@@ -12,6 +12,7 @@ import type { PluginSources } from './plugin-dir.js';
 import { createRoundGuards, settleRoundGuards } from './round-guards.js';
 import { watchRunStop } from './run-control.js';
 import type { TraceStore } from './trace-store.js';
+import { toRecord, type RunObservation } from './trace-events.js';
 import { createLiveMonitor, stallThresholds, type LiveBudget, type LivePhase } from './live-status.js';
 import { randomUUID } from 'node:crypto';
 import { EXECUTION_PROBE_MAX_COST_USD, EXECUTION_PROBE_PREFIX, executionPreflightError, preflightSpendDetail, type ExecutionPreflight, type ExecutionProbeResult } from './preflight.js';
@@ -269,6 +270,9 @@ export function createSession(opts: SessionOptions): Session {
     // did not finish (exit 1). Nothing else can tell the two apart from here.
     let started = false;
     const usageIds = new Set<string>();
+    // Observe actual command/result pairs only. A shell command is not proof
+    // that the task verification ran, and output prose never supplies an exit code.
+    const pendingCommands = new Map<string, { command: string; truncated: boolean; role: 'lead' | 'builder' | 'critic' | 'unknown'; piece?: string; round?: number }>();
     const monitor = opts.runId !== undefined && opts.trace !== undefined
       ? createLiveMonitor(opts.cwd, opts.runId, opts.trace, opts.maxBudgetUsd, stallThresholds(opts.env), opts.budget) : undefined;
     const releaseControl = opts.runId === undefined ? undefined : watchRunStop(opts.cwd, opts.runId);
@@ -315,6 +319,39 @@ export function createSession(opts: SessionOptions): Session {
         if (parent) {
           const agent = opts.trace?.processes().find((p) => p.taskId === parent);
           if (agent) { phase = agent.role; activityPiece = agent.piece ?? undefined; activityRound = agent.round ?? undefined; }
+        }
+        if (opts.trace && opts.runId && (message.type === 'assistant' || message.type === 'user') && Array.isArray(message.message.content)) {
+          for (const block of message.message.content) {
+            if (message.type === 'assistant' && block.type === 'tool_use' && block.name === 'Bash') {
+              const command = (block.input as { command?: unknown } | null)?.command;
+              if (typeof command !== 'string') continue;
+              // Bounded observations must never hold an unbounded provider stream.
+              if (pendingCommands.size >= 1000) pendingCommands.delete(pendingCommands.keys().next().value!);
+              const sanitizedCommand = String(toRecord({ kind: 'activity', payload: { detail: command } }, { runId: opts.runId }).payload['detail']);
+              pendingCommands.set((parent ?? '') + '\0' + block.id, { command: sanitizedCommand.slice(0, 4000), truncated: sanitizedCommand.length > 4000,
+                role: parent ? phase === 'builder' || phase === 'critic' ? phase : 'unknown' : 'lead',
+                piece: activityPiece, round: activityRound });
+            } else if (message.type === 'user' && block.type === 'tool_result') {
+              const key = (parent ?? '') + '\0' + block.tool_use_id, observed = pendingCommands.get(key);
+              if (!observed) continue;
+              pendingCommands.delete(key);
+              const output = typeof block.content === 'string' ? block.content : Array.isArray(block.content)
+                ? block.content.map((part: { type: string; text?: string }) => part.type === 'text' ? part.text ?? '' : '').join('\n') : '';
+              const record = toRecord({ kind: 'activity', piece: observed.piece, round: observed.round, payload: {
+                detail: 'Command result received', evidence: { type: 'verification', source: 'sdk-tool-result', purpose: 'command',
+                  role: observed.role, tool: 'Bash', toolUseId: block.tool_use_id, command: observed.command, output,
+                  ...(typeof block.is_error === 'boolean' ? { isError: block.is_error } : {}),
+                },
+              } }, { runId: opts.runId });
+              // Redact before limiting stored text so a cut cannot hide a token's shape.
+              const evidence = record.payload['evidence'] as Extract<RunObservation, { type: 'verification' }>;
+              if (evidence.output.length > 16000 || observed.truncated) {
+                evidence.output = evidence.output.slice(0, 16000); evidence.truncated = true;
+              }
+              opts.trace.append(toRecord({ kind: 'activity', piece: observed.piece, round: observed.round,
+                payload: { detail: 'Command result received', evidence } }, { runId: opts.runId }));
+            }
+          }
         }
         if (message.type === 'assistant' && Array.isArray(message.message.content)) {
           const usage = message.message.usage;

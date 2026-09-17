@@ -161,6 +161,41 @@ test('artifact links are a strict allowlist of existing regular files inside the
   assert.deepEqual(readPanelRunDetail(input, 'r-first').artifacts.map((a) => a.name), ['progress.html']);
 });
 
+test('run evidence spans the whole trace and its source links survive event pagination and cached status changes', (t) => {
+  const input = project(t); run(input, 'r-evidence', { status: 'blocked' });
+  const events = [
+    { kind: 'run_started' },
+    { kind: 'gate_check', piece: 'P1', round: 1, payload: { gate: 'ownership', passed: true, detail: JSON.stringify({ kind: 'ownership', touched: ['src/a.ts'], violations: [] }) } },
+    { kind: 'builder_round_ended', piece: 'P1', round: 1, payload: { attempt: 1, verbatimVerification: true, verificationOutput: '4 checks passed' } },
+    { kind: 'verdict_recorded', piece: 'P1', round: 1, payload: { verdict: 'LOSS', gap: 'R2: keyboard focus is missing' } },
+    ...Array.from({ length: 1100 }, (_, i) => ({ kind: 'activity', payload: { phase: 'lead', detail: 'Observation ' + i } })),
+    { kind: 'run_finished', payload: { status: 'blocked', rounds: 1, costUsd: 0.1 } },
+  ];
+  traceFile(input, 'r-evidence', events);
+  const before = snapshot(input.path);
+  const detail = readPanelRunDetail(input, 'r-evidence', undefined, 2);
+  assert.equal(detail.events.length, 2);
+  const round = detail.evidence.rounds.find(row => row.piece === 'P1' && row.round === 1);
+  assert.ok(round);
+  assert.equal(round.files.find(file => file.path === 'src/a.ts').kind, 'observed');
+  assert.equal(round.verification.find(check => check.authority === 'builder').status, 'reported');
+  const finding = round.findings.find(row => row.verdict === 'LOSS');
+  assert.equal(finding.gap, 'R2: keyboard focus is missing');
+  const source = readPanelRunDetail(input, 'r-evidence', finding.source.seq - 1, 1);
+  assert.equal(source.events[0].seq, finding.source.seq);
+  assert.equal(source.events[0].payload.gap, finding.gap);
+  assert.deepEqual(source.evidence.rounds, detail.evidence.rounds);
+  const older = readPanelRunDetail(input, 'r-evidence', undefined, 2, detail.oldestCursor);
+  assert.deepEqual(older.evidence.rounds, detail.evidence.rounds);
+  assert.deepEqual(snapshot(input.path), before);
+  writeState(input.path, 'complete', 'r-evidence');
+  const settled = readPanelRunDetail(input, 'r-evidence', undefined, 2);
+  assert.equal(settled.run.status, 'complete');
+  assert.equal(settled.evidence.summary.blockingReason, null);
+  assert.equal(settled.evidence.summary.nextAction.action, 'review');
+  assert.deepEqual(settled.evidence.rounds, detail.evidence.rounds);
+});
+
 test('symlinked trace and metadata never escape the project, and one unreadable project does not hide other events', (t) => {
   const unsafe = project(t, 'unsafe'), outside = project(t, 'outside'), good = project(t, 'good');
   run(unsafe); run(good);

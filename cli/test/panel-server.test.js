@@ -64,6 +64,29 @@ test('loopback API rejects foreign hosts, origins, tokenless writes and invalid 
   assert.equal((await get('/api/jobs/missing')).status, 404);
 });
 
+test('run evidence exposes recorded checks and links to exact source events through real HTTP', async t => {
+  const { root, get } = await fixture(t);
+  const id = 'r.evidence';
+  appendRun(root, { id, startedAt: new Date().toISOString(), status: 'blocked', sessionId: 'evidence-session', input: 'Improve keyboard access', models: { lead: 'inherit', builder: 'inherit', critic: 'inherit' } });
+  const trace = openTrace(root, id, () => {});
+  trace.append({ at: Date.now(), runId: id, kind: 'gate_check', piece: 'P1', round: 1, payload: { gate: 'report.output', passed: false, detail: 'Verification output is missing.' } });
+  trace.append({ at: Date.now() + 1, runId: id, kind: 'verdict_recorded', piece: 'P1', round: 1, payload: { verdict: 'LOSS', gap: '<script>inert finding</script>' } });
+  trace.close();
+  const projectId = (await (await get('/api/overview')).json()).projects[0].id;
+  const path = '/api/runs/' + id + '?projectId=' + projectId;
+  const detail = await (await get(path + '&limit=1')).json();
+  const round = detail.evidence.rounds.find(row => row.piece === 'P1' && row.round === 1);
+  const check = round.verification.find(row => row.name === 'report.output');
+  assert.equal(check.status, 'failed');
+  assert.equal(check.authority, 'guard');
+  const source = await (await get(path + '&after=' + (check.source.seq - 1) + '&limit=1')).json();
+  assert.equal(source.events[0].seq, check.source.seq);
+  assert.equal(source.events[0].payload.detail, check.detail);
+  assert.deepEqual(source.evidence.rounds, detail.evidence.rounds);
+  assert.equal(round.findings[0].gap, '<script>inert finding</script>');
+  assert.equal(detail.evidence.summary.nextAction.action, 'resume');
+});
+
 test('project registration persists, deduplicates, and removal preserves all project files', async t => {
   const { root, get, send } = await fixture(t);
   const other = join(root, 'other'); mkdirSync(other); writeFileSync(join(other, 'keep.txt'), 'keep');

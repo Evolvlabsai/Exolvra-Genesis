@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.0 — 2026-09-17
+
+- Run detail now leads with the recorded outcome, latest activity, blocking
+  context and an available next action. Evidence, round history and raw events
+  are separate views, with exact source-event links for recorded statements.
+- Show observed and builder-reported file changes, verification output, guard
+  results and critic findings. Compare recorded file lists and findings between
+  rounds of the same piece, without treating an omitted finding as resolved or
+  a missing file-list entry as a file deletion. Older or incomplete records
+  explicitly show unavailable evidence.
+- New run observations retain structured report and command evidence through
+  the existing trace redaction boundary. Evidence views never run verification,
+  inspect the current working tree as historical proof, or change execution.
+
 ## 0.10.0 — 2026-09-17
 
 - `dashboard` serves a Genesis control panel with operations, run history,

@@ -52,6 +52,25 @@ their Markdown sources.
 10. Keep deployment configurable. Provide direct Node instructions and portable
     container, reverse-proxy and service examples without coupling the app to
     a particular hostname, cloud provider or production machine.
+11. Run detail leads with the recorded outcome, current or last observed
+    activity, blocking context when available, and a next action permitted by
+    existing run controls. Earlier recovered errors must not become the reason
+    for a later stop or block, and a complete run must not display an old blocker.
+12. Present recorded changed files, verification output, guard checks and critic
+    findings with their exact trace sources. Distinguish observed filesystem
+    changes, builder claims and actual command results. Missing or unattributed
+    evidence stays explicit; a generic shell command is not automatically a
+    verification pass. Reading the page never executes commands or derives
+    historical changes from the current working tree.
+13. Compare rounds within the same piece using recorded candidate identities,
+    file lists and findings. File-list differences do not mean files were
+    created or deleted. A finding absent from a later report is not proof of a
+    fix. Event pagination must not hide older evidence from these comparisons;
+    bounded or degraded projections explain any missing coverage.
+14. Keep evidence, round history and raw events easy to navigate on desktop and
+    mobile in either theme. Preserve the selected view and expanded evidence
+    through polling. Source links open the specific recorded event even when
+    that event is outside the currently loaded event page.
 
 ## Scope
 

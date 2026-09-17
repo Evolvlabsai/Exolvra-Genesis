@@ -30,9 +30,12 @@ The interface uses Genesis's recorded runs and live process observations:
 - **Operations** shows active work, lifecycle counts, service status and recent
   events. Polling refreshes live observations every two seconds.
 - **Runs** filters recorded runs by project, state or text. A run opens its
-  lifecycle, event stream, process observations, pieces, measured budget,
-  captured input and downloadable artifacts. Events support filters, tailing
-  and older pages. JSON export contains the data currently loaded.
+  outcome, latest activity, blocking context and available next action. Evidence
+  shows recorded file changes, command output, guard checks and critic findings;
+  round history compares evidence within each piece. Events support filters,
+  tailing and older pages. Budget, processes, captured input and downloadable
+  artifacts remain alongside the evidence. JSON export includes the bounded
+  evidence view and currently loaded events.
 - **Plans** shows panel-launched planning commands and their captured output.
 - **Projects** registers existing directories on the panel's host and their
   named goals.
@@ -48,6 +51,36 @@ The interface uses Genesis's recorded runs and live process observations:
 Use the sun/moon button in the top bar or sign-in screen to switch between light
 and dark mode. Your browser remembers the choice. Settings also offers a
 **System** theme that follows your device's appearance preference.
+
+### Reading run evidence
+
+The run summary uses the recorded state and observations; missing evidence is
+shown explicitly. **Resume** and **Stop** use the same availability rules as the
+CLI. Reviewing evidence never runs a command or starts a model session.
+
+- **Observed changes** come from an ownership snapshot taken during that run.
+  Changes restored by the ownership guard are labeled. **Reported changes**
+  come from a builder's report and retain that distinction.
+- **Checks and commands** distinguish guard checks, builder-reported output,
+  and observed tool results. A shell command being recorded is not proof that
+  the task's verification passed. Tool receipts without an explicit exit
+  status remain recorded observations.
+- **Critic findings** retain the verdict, gap and supporting evidence that
+  were recorded. Use a source button to inspect the exact trace event, even
+  if it precedes the currently loaded event page.
+- **Round history** compares consecutive numbered rounds of the same piece
+  when both have usable evidence.
+  File-list changes mean differences in recorded lists, not files added or
+  deleted from the repository. A gap no longer reported is not automatically
+  fixed. Candidate comparisons use recorded fingerprints; Genesis does not
+  inspect today's working tree as historical proof.
+
+Older runs may lack these observations. Unattributed records stay separate from
+numbered rounds. The evidence view bounds retained rounds, files, output and
+findings and labels incomplete coverage. Raw events and existing artifacts are
+available for further inspection.
+
+### Starting and controlling work
 
 Use **New run** to enter a goal, named goal or spec path and select a project.
 Model and permission choices go to the existing CLI. Builds run unattended
@@ -138,7 +171,7 @@ package that includes the compiled CLI, panel assets and plugin files. Transfer
 that tarball to the server, then install it there, substituting its actual path:
 
 ```sh
-sudo npm install --prefix /opt/genesis /absolute/path/exolvra-genesis-0.10.0.tgz
+sudo npm install --prefix /opt/genesis /absolute/path/exolvra-genesis-0.11.0.tgz
 ```
 
 The service example invokes `/usr/bin/node` with

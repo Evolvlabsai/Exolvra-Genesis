@@ -112,6 +112,15 @@ export function createRoundGuards(cwd: string, runId: string, builderModel: stri
     // The same recursive sanitizer protects the durable round log and trace.
     const entry = toRecord({ kind: 'activity', piece: fields.piece, round, payload: { detail: JSON.stringify(recorded) } }, { runId });
     appendFileSync(join(root, 'round-log.ndjson'), JSON.stringify(entry) + '\n');
+    if ((fields.kind === 'ownership' || fields.kind === 'ownership-on-session-end') && trace) {
+      const observation = event as { touched: string[]; restored: string[]; violations: string[] };
+      trace.append(toRecord({ kind: 'activity', piece: fields.piece, round, payload: {
+        detail: 'File changes observed by ownership snapshot', evidence: {
+          type: 'file_changes', source: 'ownership-snapshot', files: observation.touched,
+          restored: observation.restored, violations: observation.violations,
+        },
+      } }, { runId }));
+    }
     if (fields.checks) for (const check of fields.checks) trace?.append(toRecord({ kind: 'gate_check', piece: fields.piece, round, payload: { gate: check.name, passed: check.passed, detail: check.checked + (check.violation ? ': ' + check.violation : '') } }, { runId }));
     else if (fields.violations) trace?.append(toRecord({ kind: 'gate_check', piece: fields.piece, round, payload: { gate: 'ownership', passed: fields.violations.length === 0, detail: JSON.stringify(recorded) } }, { runId }));
     else trace?.append(toRecord({ kind: 'activity', piece: fields.piece, round, payload: { detail: JSON.stringify(recorded) } }, { runId }));

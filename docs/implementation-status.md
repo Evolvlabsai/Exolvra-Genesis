@@ -1,13 +1,13 @@
 # Specification implementation status
 
-Version 0.10.0, 2026-09-17. The contracts remain in `docs/specs/`; this page
+Version 0.11.0, 2026-09-17. The contracts remain in `docs/specs/`; this page
 maps them to the implementation and its verification boundaries.
 
 | Specification | Implementation | Regression coverage |
 | --- | --- | --- |
 | Builder continuity | Per-piece builder sessions, cold-start reasons, poison handling; fresh critics | `round-guards`, `distributed-runtime` |
 | Charting | Local Markdown and native GitHub maps, claims and heartbeats, research, human dialogue, prototypes, approved handoffs | `chart` |
-| Control panel | Live evidence, project registration, command execution, per-browser shared-key sessions, portable deployment examples | `panel-auth`, `panel-data`, `panel-jobs`, `panel-server`, `package` |
+| Control panel | Live evidence, run summaries, source-linked files/checks/findings and round comparisons, project registration, command execution, shared-key sessions, portable deployment examples | `panel-auth`, `panel-data`, `panel-evidence`, `panel-jobs`, `panel-server`, `run-evidence-capture`, `package` |
 | Distributed rounds | Outbound-polling daemons, pinned bundles, lead verification, separate critic machines, capabilities, cancellation and billing recovery | `distributed-runtime`, `distributed-lead`, `distributed-rounds`, `git` |
 | First contact | Bounded execution probe, model error messages, terminal-only permission retry, packaged-install checks | `first-contact`, `package`, `session` |
 | Issue runner | Shared build loop, authenticated claims and recovery, guarded branches and PRs, interrupt settlement | `work`, `github`, `git`, `live-status-stop` |
@@ -23,7 +23,7 @@ Test names in the table refer to `cli/test/<name>.test.js`. Run the complete
 verification with `cd cli && npm test`; it builds the CLI and packaged plugin
 before running the tests.
 
-Verified on Windows on 2026-09-17: **1,508 tests passed in 47 suites**, with
+Verified on Windows on 2026-09-17: **1,535 tests passed in 47 suites**, with
 zero failures, skips or cancellations. The exhaustive models visited all
 44 claim-protocol states and 248 distributed-protocol states within their
 declared bounds. Package-install checks and real stop/SIGINT parity checks
@@ -54,7 +54,11 @@ the documented trust and atomic-operation requirements in
 The control panel was also checked in Chrome at desktop and mobile sizes
 against real local HTTP servers: navigation, filtering, project registration,
 exports, form preservation during polling, shared sign-in, session persistence,
-independent member sessions and sign-out. These checks made no paid model calls.
+independent member sessions and sign-out. Run-detail checks cover summaries,
+evidence provenance, round comparisons, exact older source events, event paging,
+keyboard tabs and modal focus, polling preservation, inert hostile text, missing
+historical evidence, and both themes at desktop and 320/390-pixel mobile widths.
+These checks made no paid model calls.
 The [deployment guide](control-panel.md) covers direct Node, a service behind an
 HTTPS proxy and containers. Docker is unavailable in this development
 environment, so the image and Compose example have not been build-tested.

@@ -104,6 +104,7 @@ export interface PanelOverview {
 
 export interface PanelRunDetail {
   run: PanelRun;
+  evidence: PanelRunEvidence;
   events: PanelEvent[];
   cursor: number;
   hasMore: boolean;
@@ -114,4 +115,66 @@ export interface PanelRunDetail {
   pieces: { id: string; round: number; verdict: string | null; costUsd: number | null }[];
   artifacts: { name: string; kind: string; url: string }[];
   warnings: string[];
+}
+
+/** Every observed statement can be opened at its exact position in the run trace. */
+export interface PanelEvidenceSource { seq: number; at: number; kind: string }
+export interface PanelEvidenceFact { text: string; source: PanelEvidenceSource | null }
+export interface PanelEvidenceFile {
+  path: string;
+  kind: 'observed' | 'reported';
+  /** True when the ownership guard restored this change; null for a report. */
+  restored: boolean | null;
+  source: PanelEvidenceSource;
+}
+export interface PanelEvidenceVerification {
+  name: string;
+  status: 'passed' | 'failed' | 'reported' | 'recorded';
+  detail: string;
+  command: string | null;
+  authority: 'guard' | 'builder' | 'lead' | 'critic' | 'unknown';
+  source: PanelEvidenceSource;
+}
+export interface PanelEvidenceFinding {
+  verdict: 'WIN' | 'LOSS' | 'BLOCKED';
+  gap: string;
+  evidence: string;
+  source: PanelEvidenceSource;
+}
+export interface PanelEvidenceComparison {
+  previousRound: number;
+  /** Set differences in recorded file lists, never a claim of deletion from disk. */
+  addedFiles: string[];
+  removedFiles: string[];
+  repeatedFindings: string[];
+  newFindings: string[];
+  /** Absence from a later report does not establish that a finding was fixed. */
+  noLongerReported: string[];
+  candidateChanged: boolean | null;
+  candidateSources: { previous: PanelEvidenceSource; current: PanelEvidenceSource } | null;
+  filesComparable: boolean;
+  findingsComparable: boolean;
+}
+export interface PanelEvidenceRound {
+  piece: string | null;
+  /** Null means the original record did not identify a round. */
+  round: number | null;
+  startedAt: number | null;
+  endedAt: number | null;
+  files: PanelEvidenceFile[];
+  verification: PanelEvidenceVerification[];
+  findings: PanelEvidenceFinding[];
+  comparison: PanelEvidenceComparison | null;
+  missing: string[];
+}
+export interface PanelRunEvidence {
+  summary: {
+    outcome: PanelEvidenceFact;
+    currentActivity: PanelEvidenceFact;
+    blockingReason: PanelEvidenceFact | null;
+    nextAction: PanelEvidenceFact & { action: 'resume' | 'stop' | 'review' | 'wait' | 'new-run' };
+  };
+  rounds: PanelEvidenceRound[];
+  warnings: string[];
+  truncated: boolean;
 }

@@ -91,7 +91,18 @@ export interface BuilderRoundEndedPayload {
   attempt: number;
   verbatimVerification: boolean;
   verificationOutput?: string;
+  /** A producer report is a claim, never proof that the lead reran it. */
+  source?: 'builder-report';
+  reportedFiles?: string[];
+  verificationCommands?: string[];
+  truncated?: boolean;
 }
+
+/** Optional observations enrich existing event kinds without deciding the loop. */
+export type RunObservation =
+  | { type: 'file_changes'; source: 'ownership-snapshot'; files: string[]; restored: string[]; violations: string[] }
+  | { type: 'verification'; source: 'sdk-tool-result'; purpose: 'command'; role: 'lead' | 'builder' | 'critic' | 'unknown'; tool: 'Bash'; toolUseId: string; command: string; output: string; isError?: boolean; truncated?: boolean }
+  | { type: 'critic_report'; source: 'critic-report'; criticId: string; verdict?: 'WIN' | 'LOSS' | 'BLOCKED'; gap?: string; evidence?: string; isError?: boolean; truncated?: boolean };
 
 export interface CriticDispatchedPayload {
   criticId: string;
@@ -159,7 +170,7 @@ export type ErrorPathEvent = BaseTraceEvent<'error_path', ErrorPathPayload>;
 export type ProcessEventType = BaseTraceEvent<'process_event', ProcessEventPayload>;
 
 export type TraceEvent =
-  | { kind: LiveEventKind; piece?: string | null; round?: number; payload: { detail: string; phase?: string; budget?: { spentUsd: number; maxCostUsd?: number; rounds: number; maxRounds?: number }; tokens?: { inputTokens: number; outputTokens: number } } }
+  | { kind: LiveEventKind; piece?: string | null; round?: number; payload: { detail: string; phase?: string; budget?: { spentUsd: number; maxCostUsd?: number; rounds: number; maxRounds?: number }; tokens?: { inputTokens: number; outputTokens: number }; evidence?: RunObservation } }
   | RunStartedEvent
   | RunFinishedEvent
   | PieceDispatchedEvent

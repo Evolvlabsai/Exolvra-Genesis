@@ -9,6 +9,7 @@ import { loadPluginSources, PLUGIN_FILES } from './plugin-dir.js';
 import { isRunId, readRuns, readState, runDirectory, settledIssueRun, type RunRecord, type StateReading } from './runs-store.js';
 import { deriveLiveness, pidExists, readProcesses, readTrace, traceDirectory, type ProcessReading, type TraceRecord } from './trace-store.js';
 import { plainText } from './usage.js';
+import { createPanelEvidence } from './panel-evidence.js';
 import type { PanelAgent, PanelEvent, PanelProject, PanelRun, PanelRunDetail } from './panel-types.js';
 
 export type PanelProjectSource = Pick<PanelProject, 'id' | 'name' | 'path'>;
@@ -114,6 +115,7 @@ interface TraceSummary {
   cost: number | null; input: number | null; output: number | null; phase: string | null;
   budget: Record<string, unknown> | undefined; tail: TraceRecord[];
   pieces: Map<string, { id: string; round: number; verdict: string | null; costUsd: number | null }>;
+  evidence: ReturnType<typeof createPanelEvidence>;
 }
 const summaries = new Map<string, { signature: string; summary: TraceSummary }>();
 
@@ -133,7 +135,8 @@ function summarizeTrace(cwd: string, id: string, tailLimit = 0, tailBefore = Inf
   const cached = summaries.get(cacheKey);
   if (signature && cached?.signature === signature) return { ...cached.summary, tail: tailLimit > 0 ? cached.summary.tail.slice(-tailLimit) : [] };
   const result: TraceSummary = { present: safety.present, degraded: !safety.safe, cursor: 0, firstSeq: 0, rounds: 0, latestAt: 0, finishedAt: null,
-    cost: null, input: null, output: null, phase: null, budget: undefined, tail: [], pieces: new Map() };
+    cost: null, input: null, output: null, phase: null, budget: undefined, tail: [], pieces: new Map(),
+    evidence: createPanelEvidence(id, (value, maxLength) => scrubPanelText(value, process.env, maxLength)) };
   if (!safety.safe || !safety.present) return result;
   let inputReceipts = 0, outputReceipts = 0;
   for (;;) {
@@ -143,6 +146,7 @@ function summarizeTrace(cwd: string, id: string, tailLimit = 0, tailBefore = Inf
     for (const event of batch.records) {
       if (!Number.isSafeInteger(event.seq) || event.seq <= result.cursor || event.runId !== id) continue;
       result.cursor = event.seq;
+      result.evidence.record(event);
       if (result.firstSeq === 0) result.firstSeq = event.seq;
       result.latestAt = Math.max(result.latestAt, number(event.at) ?? 0);
       const payload = object(event.payload) ?? {};
@@ -307,9 +311,11 @@ export function readPanelRunDetail(project: PanelProjectSource, id: string, afte
   if (summary.degraded || batch.degraded || processes.degraded) warnings.push('Trace could not be read completely; some activity and usage are unavailable.');
   if ([...summary.pieces.values()].some((piece) => piece.costUsd === null)) warnings.push('Local nested agents have no separate provider bill; per-piece cost is unavailable.');
   const last = events.at(-1)?.seq ?? cursor, first = events[0]?.seq ?? 0;
-  return { run: panelRun(project, row, state, summary, live), events, cursor: last, oldestCursor: first,
+  const run = panelRun(project, row, state, summary, live);
+  const degraded = summary.degraded || batch.degraded || processes.degraded || !summary.present;
+  return { run, evidence: summary.evidence.finish(run, { degraded }), events, cursor: last, oldestCursor: first,
     hasEarlier: first > summary.firstSeq && summary.firstSeq > 0, hasMore: last < summary.cursor,
-    degraded: summary.degraded || batch.degraded || processes.degraded || !summary.present,
+    degraded,
     processes: processes.processes.slice(0, 1000).map((p) => ({ taskId: scrubPanelText(p.taskId), role: scrubPanelText(p.role), piece: p.piece === null ? null : scrubPanelText(p.piece),
       round: number(p.round), openedAt: p.openedAt, closedAt: p.closedAt, outcome: p.outcome, pid: p.pid })),
     pieces: [...summary.pieces.values()], artifacts: Object.keys(artifactFiles).filter((name) => safePanelArtifactPath(project, id, name)).map((name) => ({ name,
