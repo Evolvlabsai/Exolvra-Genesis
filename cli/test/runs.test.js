@@ -724,7 +724,7 @@ function ledger(now = Date.now()) {
   ];
 }
 
-test('the table is the real renderer, and it is written to .evidence', () => {
+test('the table is the real renderer, and it is written to .evidence (criterion 6)', () => {
   const dir = seed(fresh(), ledger());
   const { code, stdout, stderr } = runProcess(BIN, ['runs', '-C', dir], {
     env: { EXOLVRA_GENESIS_FORCE_TTY: '100' },
@@ -734,7 +734,7 @@ test('the table is the real renderer, and it is written to .evidence', () => {
 
   const lines = stdout.split('\n').filter((line) => line !== '');
   assert.equal(lines.length, 7, 'a header row and six records:\n' + stdout);
-  assert.match(lines[0], /^ID {2,}STARTED {2,}INPUT {2,}STATUS {2,}VERDICT$/);
+  assert.match(lines[0], /^ID {2,}STARTED {2,}INPUT {2,}STATUS {2,}VERDICT {2,}LIVE$/);
   assert.ok(!stdout.includes('\t'), 'a terminal layout emitted tabs');
 
   // Newest first, with an age rather than a timestamp.
@@ -745,7 +745,7 @@ test('the table is the real renderer, and it is written to .evidence', () => {
 
   // Columns: every cell starts where its header does, and nothing runs past the
   // width the output was laid out for.
-  for (const heading of ['STARTED', 'INPUT', 'STATUS', 'VERDICT']) {
+  for (const heading of ['STARTED', 'INPUT', 'STATUS', 'VERDICT', 'LIVE']) {
     const column = lines[0].indexOf(heading);
     for (const line of lines) {
       assert.equal(line[column - 1], ' ', 'a cell ran into the gutter: ' + line);
@@ -766,11 +766,30 @@ test('a piped table is tab-delimited records with the timestamps as recorded', (
   assert.equal(rows.length, 6, 'a pipe gets no header row:\n' + stdout);
   for (const row of rows) {
     const fields = row.split('\t');
-    assert.equal(fields.length, 5, 'a record with the wrong field count: ' + row);
+    assert.equal(fields.length, 6, 'a record with the wrong field count: ' + row);
     assert.ok(!fields.some((field) => field === ''), 'an empty field: ' + row);
     assert.doesNotMatch(row, / {2}/, 'a piped row was padded: ' + row);
   }
   assert.match(rows[0].split('\t')[1], /^\d{4}-\d{2}-\d{2}T/, 'a pipe should sort');
+
+  // The positional contract, named. LIVE is appended rather than slotted in
+  // beside STATUS, so every field a reader had before it is still that field:
+  // field 4 the status, field 5 the verdict, and the new column on the end. `-`
+  // is a legal value of both field 5 and field 6, so if those two ever swapped
+  // a reader with `cut -f5` would not fail — it would read a liveness value as a
+  // verdict and say a settled run had reached none. Nothing but position catches
+  // that, so position is what is asserted here.
+  const byId = new Map(rows.map((row) => [row.split('\t')[0], row.split('\t')]));
+  assert.deepEqual(
+    byId.get('r-20260808-0904-9c21ab').slice(3),
+    ['complete', 'WIN', '-'],
+    'status, verdict, live — in that order: ' + byId.get('r-20260808-0904-9c21ab').join(' | '),
+  );
+  assert.deepEqual(
+    byId.get('r-20260810-1712-c10e5f').slice(3),
+    ['running', 'LOSS', '?'],
+    'status, verdict, live — in that order: ' + byId.get('r-20260810-1712-c10e5f').join(' | '),
+  );
 });
 
 test('--limit takes the most recent runs, and --json writes the records', () => {
@@ -803,6 +822,7 @@ const JSON_FIELDS = [
   'id',
   'input',
   'lastVerdict',
+  'live',
   'models',
   'rounds',
   'sessionId',
@@ -810,7 +830,7 @@ const JSON_FIELDS = [
   'status',
 ];
 
-test('every record --json writes has every field, whatever is in it', () => {
+test('every record --json writes has every field, whatever is in it (criterion 7)', () => {
   const dir = seed(fresh(), ledger());
   const { code, stdout } = runProcess(BIN, ['runs', '-C', dir, '--json'], {});
   assert.equal(code, 0);
@@ -842,6 +862,96 @@ test('every record --json writes has every field, whatever is in it', () => {
     null,
     'a run with no session must say so rather than leave the field out',
   );
+});
+
+/*
+ * C1, which this column is subordinate to: the trace is a mirror, and `runs`
+ * reads the same whether it is there or not.
+ *
+ * Byte-identical is the assertion because anything weaker would pass while the
+ * listing quietly changed shape — a column that widens when a trace appears, a
+ * warning on stderr, a row order that depends on which runs happen to have been
+ * traced. The only thing the trace is allowed to move is what is inside the LIVE
+ * cell, and with the trace gone that cell is the not-known value on every run
+ * that has no row to read.
+ */
+test('a deleted trace lists byte-for-byte as a ledger that never had one (criterion 8)', () => {
+  const now = Date.parse('2026-08-10T18:00:00.000Z');
+  const untraced = seed(fresh(), ledger(now));
+  const deleted = seed(fresh(), ledger(now));
+
+  // A trace that was there and was written to, and then went. The pid in it is
+  // this process's, which is alive: if anything downstream still had the row,
+  // the run would read `live` and the two listings would differ.
+  const traceDir = join(deleted, '.exolvra-genesis', 'trace');
+  mkdirSync(traceDir, { recursive: true });
+  writeFileSync(
+    join(traceDir, 'r-20260810-1719-ff0021.ndjson'),
+    JSON.stringify({
+      type: 'process',
+      data: {
+        runId: 'r-20260810-1719-ff0021',
+        taskId: 'lead-r-20260810-1719-ff0021',
+        role: 'lead',
+        piece: null,
+        round: null,
+        openedAt: now,
+        closedAt: null,
+        outcome: null,
+        pid: process.pid,
+      },
+    }) + '\n',
+    'utf8',
+  );
+  rmSync(traceDir, { recursive: true, force: true });
+
+  const never = runProcess(BIN, ['runs', '-C', untraced], {});
+  const gone = runProcess(BIN, ['runs', '-C', deleted], {});
+  assert.equal(never.code, 0, never.stderr);
+  assert.equal(gone.code, 0, gone.stderr);
+  assert.equal(gone.stdout, never.stdout, 'a deleted trace changed the listing');
+  assert.equal(gone.stderr, never.stderr, 'a deleted trace said something on stderr');
+
+  const live = never.stdout
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((row) => row.split('\t')[5]);
+  assert.deepEqual(
+    live,
+    ['?', '?', '?', '-', '-', '-'],
+    'a run with no row to read must say so, not guess: ' + never.stdout,
+  );
+});
+
+/*
+ * A read failure is not a command failure — the property `runs-store.ts` already
+ * holds, extended to the mirror beside it. A trace that cannot be read leaves
+ * the cell saying it does not know, and the listing is otherwise the listing.
+ */
+test('a corrupt trace is a "?" in the LIVE column, not a failed listing (criterion 9)', () => {
+  const now = Date.parse('2026-08-10T18:00:00.000Z');
+  const dir = seed(fresh(), ledger(now));
+
+  // Corrupt in the way the store itself calls degraded: where a run's trace file
+  // should be, something that is not a file.
+  mkdirSync(join(dir, '.exolvra-genesis', 'trace', 'r-20260810-1719-ff0021.ndjson'), {
+    recursive: true,
+  });
+
+  const table = runProcess(BIN, ['runs', '-C', dir], {});
+  assert.equal(table.code, 0, 'a trace that cannot be read must not fail a listing: ' + table.stderr);
+  const rows = table.stdout.split('\n').filter((line) => line !== '');
+  assert.equal(rows.length, 6, 'a corrupt trace lost a row:\n' + table.stdout);
+  assert.equal(rows[0].split('\t')[0], 'r-20260810-1719-ff0021');
+  assert.equal(rows[0].split('\t')[3], 'running', 'the status column is the ledger, untouched');
+  assert.equal(rows[0].split('\t')[5], '?', 'a degraded read must read as not-known: ' + rows[0]);
+
+  const json = runProcess(BIN, ['runs', '-C', dir, '--json'], {});
+  assert.equal(json.code, 0, json.stderr);
+  const records = JSON.parse(json.stdout);
+  assert.equal(records[0].id, 'r-20260810-1719-ff0021');
+  assert.equal(records[0].status, 'running');
+  assert.equal(records[0].live, '?', 'a degraded read must be not-known in --json too');
 });
 
 test('the fields the help lists are exactly the fields --json writes', () => {
@@ -878,7 +988,7 @@ test('a directory with no runs says so on stderr, and still exits 0', () => {
 
   // --json is a shape, and an empty list is that shape: it stays on stdout.
   const asJson = runProcess(BIN, ['runs', '-C', dir, '--json'], {});
-  assert.equal(asJson.code, 0);
+  assert.equal(asJson.code, 0, asJson.stdout + asJson.stderr);
   assert.deepEqual(JSON.parse(asJson.stdout), []);
 });
 
@@ -892,11 +1002,11 @@ test('only the commands that declare it may succeed having printed nothing', asy
   // Exact, and deliberately not a rule about names: the exemption belongs to a
   // command whose job is to list what is there, because a listing of nothing is
   // a complete listing. Each of these is one — the repo's named goals, the
-  // issues waiting to be worked, and the run ledger — and another has to be
-  // added here, by hand, to join them.
+  // issues waiting to be worked, the run ledger, and a run's event stream — and
+  // another has to be added here, by hand, to join them.
   assert.deepEqual(
     exempt,
-    ['goals', 'queue', 'runs'],
+    ['goals', 'queue', 'runs', 'trace'],
     'the exemption spread beyond the commands whose job is to list',
   );
 

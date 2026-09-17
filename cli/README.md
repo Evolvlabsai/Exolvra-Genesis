@@ -24,9 +24,28 @@ exolvra-genesis plan spec.md       # preview the bar and pieces, run nothing
 `run` picks a concrete bar (an artifact or a number, never an adjective),
 splits the work into pieces, fans out builders, and judges the assembled
 result with fresh critics who see only the bar and the real output. A tie
-is a loss. The run ends on two consecutive wins, and `.exolvra-genesis/progress.html`
+is a loss. The run ends on two consecutive wins, and `.exolvra-genesis/runs/<run-id>/progress.html`
 in your project shows every round while it happens. `runs` lists past runs;
 `resume` continues one.
+
+For a browser interface, run `exolvra-genesis dashboard --open`. The
+control panel shows projects, run history, live events, agent definitions and
+measured usage. Start builds or plans and stop or resume work from the panel.
+Use `-C /path/to/project` to select the initial project and `--port 4317` to
+choose the port. For shared access, configure `EXOLVRA_GENESIS_PANEL_TOKEN`
+and `--public-url` behind an HTTPS reverse proxy. Members sign in with that
+workspace key and operate projects on the server using its CLI credentials.
+Node, container and service deployments are supported; see the
+[control panel guide](https://github.com/Evolvlabsai/Exolvra-Genesis/blob/main/docs/control-panel.md).
+
+An unattended build executes commands and therefore uses
+`--permission-mode bypassPermissions` by default; the first execution refusal
+names that flag and its remedy. Before a build, a bounded SDK query executes a
+harmless Bash command under the same permissions, records its result and spend,
+and refuses if execution cannot be demonstrated. The probe requests a provider
+budget of at most $0.10 across attempts; actual spend counts toward the run budget.
+`plan` skips it and retains
+its cautious default.
 
 Repos can declare a standing bar the loop always inherits
 (`exolvra-genesis standards init`) and keep reusable jobs by name
@@ -62,6 +81,27 @@ The safety rules are mechanisms, not promises:
   encodings included.
 - `--dry-run` shows the whole plan and writes nothing. `queue` and the
   fleet page are read-only.
+
+## Decision maps and run operations
+
+`exolvra-genesis chart "An uncertain destination"` records a map of decisions.
+`chart status` lists available tickets and remaining fog; `chart "Ticket name"`
+works one question. Local markdown works offline. `--tracker github --repo
+owner/name` uses native GitHub child issues, dependencies and assignees; the
+runner's configured repository becomes the default tracker. Human decisions
+and spec, goal or ready-issue handoffs require terminal approval. Research
+tickets may run unattended and fan out in parallel when a map is created.
+
+`trace` reads run events and exact reported session spend. Local nested
+piece/round dollar splits are unavailable; distributed round costs have exact
+provider receipts. `status` shows active runs, `stop` requests
+a graceful stop, and `doctor --read-only` checks local prerequisites. Distributed
+builder rounds are opt-in with `run --coordinator <shared-directory>`. See command help for the
+available flags and the repository's
+[charting guide](https://github.com/Evolvlabsai/Exolvra-Genesis/blob/main/docs/charting.md)
+for storage, claims and handoffs. The
+[run-operations guide](https://github.com/Evolvlabsai/Exolvra-Genesis/blob/main/docs/run-operations.md)
+explains status evidence, per-phase inactivity thresholds and stopping runs.
 
 ## Exit codes
 

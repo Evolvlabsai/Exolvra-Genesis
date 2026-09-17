@@ -1267,7 +1267,7 @@ test('a line ending nowhere near the edit is not rewritten by it', () => {
   // Three CRLFs in the file to start with, and the one that ended the replaced
   // line becomes the three the replacement needs. Every other ending is the one
   // it always was.
-  assert.equal((after.match(/\r\n/g) ?? []).length, 5, 'a line ending outside the edit moved');
+  assert.equal((after.match(/\r\n/g) ?? []).length, 2 + IGNORE_PATTERN.length, 'a line ending outside the edit moved');
   assert.equal((after.match(/(?<!\r)\n/g) ?? []).length, 1, 'an LF outside the edit moved');
   // The replacement inherits the ending of the line it replaced.
   assert.ok(after.includes(IGNORE_PATTERN.join('\r\n') + '\r\n'), after);

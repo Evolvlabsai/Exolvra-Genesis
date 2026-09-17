@@ -177,6 +177,8 @@ export interface ArgumentSpec<T = unknown> {
 export interface EnvSpec<T = unknown> {
   name: string;
   value: ValueType<T>;
+  /** Rejections name this credential variable but must never echo its value. */
+  sensitive?: boolean;
   /** When this flag is given the variable goes unused, so it is not checked. */
   overriddenBy?: ValueFlagSpec<unknown>;
 }

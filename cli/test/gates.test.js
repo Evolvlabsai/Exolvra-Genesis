@@ -181,6 +181,10 @@ test('C3: the built output does not inline the plugin markdown', () => {
  * reading the gate can see the whole of the exemption on one line.
  */
 const NETWORK_MODULE = join(SRC, 'github.ts');
+// control-panel-spec.md allows one inbound loopback listener. It does not
+// authorize another outbound client; only this exact server import is exempt.
+const PANEL_SERVER_MODULE = join(SRC, 'panel-server.ts');
+const PANEL_SERVER_IMPORT = /^import \{ createServer, type IncomingMessage, type ServerResponse \} from 'node:http';\r?$/m;
 
 /** Reaching the network: banned in every source file but {@link NETWORK_MODULE}. */
 const NETWORK_PATTERNS = [
@@ -212,6 +216,7 @@ const permitted = (pattern) =>
 
 /** How `text` at `path` breaks the gate, or `undefined` when it does not. */
 function networkViolation(path, text) {
+  if (path === PANEL_SERVER_MODULE) text = text.replace(PANEL_SERVER_IMPORT, '');
   for (const pattern of BANNED_EVERYWHERE) {
     if (pattern.test(text)) return 'matches a banned pattern: ' + pattern;
   }
@@ -242,6 +247,11 @@ test('C4/C2: the check that guards the boundary rejects what the boundary forbid
   // rather than assumed — the same way the G2 guard above is. Each line below
   // is one step from a line that passes.
   const elsewhere = join(SRC, 'commands', 'run.ts');
+
+  assert.equal(networkViolation(PANEL_SERVER_MODULE, "import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';"), undefined);
+  assert.notEqual(networkViolation(PANEL_SERVER_MODULE, "import { request } from 'node:http';"), undefined);
+  assert.notEqual(networkViolation(PANEL_SERVER_MODULE, 'await fetch(url);'), undefined);
+  assert.notEqual(networkViolation(elsewhere, "import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';"), undefined);
 
   assert.notEqual(
     networkViolation(elsewhere, 'const r = await fetch(url);'),
@@ -290,9 +300,15 @@ test('C5: every command writes through the context, so its output is counted', (
   const entry = join(SRC, 'cli.ts');
   for (const file of SOURCE_FILES) {
     if (file.path === entry) continue;
+    // The child launcher bridges its own display pipes after the panel exits;
+    // it does not print a parent command result. All actual command output,
+    // including dashboard startup, still goes through ctx.stdout/stderr.
+    const text = file.path === join(SRC, 'panel-jobs.ts')
+      ? file.text.replace(/const LAUNCHER = `[\s\S]*?`;/, '')
+      : file.text;
     for (const pattern of [/\bconsole\.\w+\s*\(/, /\bprocess\.(stdout|stderr)\b/]) {
       assert.ok(
-        !pattern.test(file.text),
+        !pattern.test(text),
         file.path + ' writes around the context stream: ' + pattern,
       );
     }

@@ -1,0 +1,53 @@
+# Run from this checkout, supplying variables in your shell or a private file:
+# docker compose --env-file /private/genesis.env -f examples/control-panel.compose.yml up --build -d
+# Required: GENESIS_PUBLIC_URL=https://your-host, GENESIS_PROJECT_DIR=/absolute/project,
+# and a random EXOLVRA_GENESIS_PANEL_TOKEN of at least 24 characters.
+# A host HTTPS reverse proxy forwards to 127.0.0.1:4317 and preserves Host.
+services:
+  genesis:
+    image: ${GENESIS_IMAGE:-exolvra-genesis:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    # Stop active commands in the panel and await final billing before replacing
+    # this container. A container shutdown cannot preserve pending child jobs.
+    stop_grace_period: 60s
+    command:
+      - dashboard
+      - --directory
+      - /workspace
+      - --host
+      - 0.0.0.0
+      - --port
+      - "4317"
+      - --public-url
+      - ${GENESIS_PUBLIC_URL:?Set GENESIS_PUBLIC_URL to the HTTPS browser origin}
+    ports:
+      - "127.0.0.1:${GENESIS_PANEL_PORT:-4317}:4317"
+    environment:
+      EXOLVRA_GENESIS_PANEL_TOKEN: ${EXOLVRA_GENESIS_PANEL_TOKEN:?Set a random workspace access key of at least 24 characters}
+      # Configure one supported model credential on this server. These values
+      # never become image layers; do not commit a populated env file.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    volumes:
+      # The non-root node user (UID/GID 1000) needs write access to this project.
+      # Run history and the panel registry persist inside .exolvra-genesis here.
+      - type: bind
+        source: ${GENESIS_PROJECT_DIR:?Set GENESIS_PROJECT_DIR to an existing absolute project directory}
+        target: /workspace
+        bind:
+          create_host_path: false
+      # Private CLI settings, credentials and worker registry survive restarts.
+      - genesis-home:/home/node
+    healthcheck:
+      test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:4317/api/health', { signal: AbortSignal.timeout(3000) }); if (!r.ok) process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  genesis-home:

@@ -1,6 +1,7 @@
+import { PREFLIGHT_FAKE } from './preflight-fake.js';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +31,7 @@ export function runProcess(bin, args, { env = {}, cwd = PACKAGE_ROOT } = {}) {
   });
   assert.equal(proc.error, undefined, 'the CLI process failed to start');
   assert.equal(proc.signal, null, 'the CLI process was killed by ' + proc.signal);
-  return { code: proc.status, stdout: proc.stdout, stderr: proc.stderr };
+  return { code: proc.status, stdout: proc.stdout, stderr: proc.stderr, pid: proc.pid };
 }
 
 /** Runs the package's own `dist/cli.js`. */
@@ -90,6 +91,7 @@ function copyTree(from, to) {
 const FAKE_SDK = `import { readFileSync, writeFileSync } from 'node:fs';
 
 export function query({ prompt, options }) {
+${PREFLIGHT_FAKE}
   // Replays an answer captured from a real agent run, so the CLI renders the
   // same bytes a provider actually produced.
   const replay = process.env.EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE;
@@ -205,6 +207,7 @@ export function query({ prompt, options }) {
           session_id: 'sesn_fake',
           num_turns: 2,
           total_cost_usd: 0,
+          usage: { input_tokens: 1000, output_tokens: 500 },
           result: captured ?? 'FAKE PLAN BODY',
           errors: [],
         }
@@ -214,6 +217,7 @@ export function query({ prompt, options }) {
           session_id: 'sesn_fake',
           num_turns: 2,
           total_cost_usd: 0,
+          usage: { input_tokens: 1000, output_tokens: 500 },
           errors: subtype === 'error_during_execution' ? ['the provider blew up'] : [],
         };
 
@@ -292,4 +296,322 @@ export function createSandbox() {
       rmSync(root, { recursive: true, force: true });
     },
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Trace wiring test support — phases that yield tool_use/tool_result blocks   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A phase that dispatches a builder subagent and receives its result.
+ * Used to test builder_round_started, builder_round_ended, and process_event.
+ */
+export function builderDispatchPhase(toolId = 'toolu_builder_1') {
+  return [
+    // tool_use block dispatching the builder
+    {
+      type: 'assistant',
+      session_id: 'sesn_trace_test',
+      message: {
+        content: [
+          { type: 'text', text: 'Dispatching builder...' },
+          {
+            type: 'tool_use',
+            id: toolId,
+            name: 'Task',
+            input: { agent: 'exolvra-genesis-builder', prompt: 'Build piece P1' },
+          },
+        ],
+      },
+    },
+    // tool_result block with builder completion
+    {
+      type: 'assistant',
+      session_id: 'sesn_trace_test',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolId,
+            is_error: false,
+          },
+          { type: 'text', text: 'Builder completed successfully.' },
+        ],
+      },
+    },
+  ];
+}
+
+/**
+ * A phase that dispatches a critic subagent.
+ * Used to test critic_dispatched and process_event.
+ */
+export function criticDispatchPhase(toolId = 'toolu_critic_1') {
+  return [
+    {
+      type: 'assistant',
+      session_id: 'sesn_trace_test',
+      message: {
+        content: [
+          { type: 'text', text: 'Dispatching critic...' },
+          {
+            type: 'tool_use',
+            id: toolId,
+            name: 'Task',
+            input: { agent: 'exolvra-genesis-critic', prompt: 'Judge this work' },
+          },
+        ],
+      },
+    },
+    {
+      type: 'assistant',
+      session_id: 'sesn_trace_test',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolId,
+            is_error: false,
+          },
+          { type: 'text', text: 'Critic returned verdict.' },
+        ],
+      },
+    },
+  ];
+}
+
+/**
+ * A phase where the builder dispatch fails (is_error: true).
+ * Used to test process_event with outcome 'failed'.
+ */
+export function builderFailedPhase(toolId = 'toolu_builder_fail') {
+  return [
+    {
+      type: 'assistant',
+      session_id: 'sesn_trace_test',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: toolId,
+            name: 'Task',
+            input: { agent: 'exolvra-genesis-builder', prompt: 'Build piece' },
+          },
+        ],
+      },
+    },
+    {
+      type: 'assistant',
+      session_id: 'sesn_trace_test',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolId,
+            is_error: true,
+          },
+          { type: 'text', text: 'Builder failed.' },
+        ],
+      },
+    },
+  ];
+}
+
+/**
+ * Runs a built CLI as a real child process and interrupts it mid-run, so the
+ * SIGINT path can be driven through the shipped binary rather than described.
+ *
+ * The interrupt is raised from *inside* the child by a `--import` preload. That
+ * indirection is a Windows necessity, not a preference: `process.kill(pid,
+ * 'SIGINT')` from the parent tears the child down without ever running the
+ * handler it registered, so a test built on it would prove nothing about the
+ * handler. Emitting inside the child dispatches to the very listener the CLI
+ * installed with `process.on('SIGINT', ...)` — the same function a console
+ * Ctrl+C reaches.
+ *
+ * *When* it is raised is decided by the child, not by a clock. Every complete
+ * line the child writes to stdout is offered to `triggerOn`, and the first line
+ * it accepts releases the preload, which is waiting on a sentinel file. A
+ * wall-clock delay would be a guess at how long startup takes, and a busy
+ * machine invalidates the guess: an emit that lands before the CLI has
+ * registered its handler runs no listener at all, and the run then settles by
+ * some path that is not the interrupt path. So the caller names a line only a
+ * live turn can have produced, and the signal goes out once the child has said
+ * it is there.
+ *
+ * `delivered` is what the emit itself returned — true only if a listener ran —
+ * so a swallowed signal is a failed assertion rather than a test that quietly
+ * measured nothing.
+ *
+ * What this does *not* reproduce: the console-wide CTRL_C_EVENT a real Ctrl+C
+ * broadcasts to the whole process group, and Node's default "terminate on an
+ * unhandled SIGINT" behaviour (an emit with no listener is simply a no-op).
+ * Both are outside the CLI. Everything the CLI itself does on interrupt runs
+ * exactly as it does in a person's terminal.
+ *
+ * Resolves with `{ code, signal, stdout, stderr, pid, timedOut, triggered,
+ * delivered }`. `code` is the child's real exit code — never a substituted
+ * default — and `timedOut` says whether the guard had to kill a child that
+ * outlived `killAfterMs`, which turns a hang into a visible failure instead of
+ * a stalled suite.
+ */
+export function runProcessWithInterrupt(
+  bin,
+  args,
+  { env = {}, cwd = PACKAGE_ROOT, triggerOn, killAfterMs = 60_000 } = {},
+) {
+  assert.equal(
+    typeof triggerOn,
+    'function',
+    'runProcessWithInterrupt needs a triggerOn predicate to raise the signal on',
+  );
+
+  const preloadDir = mkdtempSync(join(tmpdir(), 'exolvra-genesis-interrupt-'));
+  const preloadPath = join(preloadDir, 'raise-sigint.mjs');
+  const releasePath = join(preloadDir, 'release');
+  const emitPath = join(preloadDir, 'emit.json');
+  writeFileSync(
+    preloadPath,
+    [
+      "import { existsSync, writeFileSync } from 'node:fs';",
+      'const release = ' + JSON.stringify(releasePath) + ';',
+      'const record = ' + JSON.stringify(emitPath) + ';',
+      // Unref'd, so this poll can never be what keeps the child alive: a run
+      // that would have ended on its own still ends, and a trigger that never
+      // arrives becomes an assertion rather than a hang.
+      'const poll = setInterval(() => {',
+      '  if (!existsSync(release)) return;',
+      '  clearInterval(poll);',
+      "  const listeners = process.listenerCount('SIGINT');",
+      "  const delivered = process.emit('SIGINT');",
+      "  writeFileSync(record, JSON.stringify({ delivered, listeners }), 'utf8');",
+      '}, 5);',
+      'poll.unref();',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const preloadFlag = '--import file:///' + preloadPath.replace(/\\/g, '/');
+
+  return new Promise((settle, reject) => {
+    const childEnv = { ...process.env, ...env };
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete childEnv[key];
+    }
+    const inherited = childEnv.NODE_OPTIONS;
+    childEnv.NODE_OPTIONS =
+      inherited === undefined || inherited === ''
+        ? preloadFlag
+        : inherited + ' ' + preloadFlag;
+
+    const proc = spawn(process.execPath, [bin, ...args], {
+      env: childEnv,
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    let triggered = false;
+    // Whatever has arrived since the last newline. The predicate is only ever
+    // shown whole lines, so a chunk boundary cannot split the trigger in two.
+    let unread = '';
+
+    proc.stdout.on('data', (data) => {
+      const text = data.toString();
+      stdout += text;
+      if (triggered) return;
+      unread += text;
+      for (;;) {
+        const cut = unread.indexOf('\n');
+        if (cut < 0) break;
+        const line = unread.slice(0, cut);
+        unread = unread.slice(cut + 1);
+        if (triggered || line.trim() === '' || !triggerOn(line)) continue;
+        triggered = true;
+        writeFileSync(releasePath, 'go', 'utf8');
+      }
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    const pid = proc.pid;
+
+    const guard = setTimeout(() => {
+      timedOut = true;
+      proc.kill('SIGKILL');
+    }, killAfterMs);
+
+    proc.on('error', (error) => {
+      clearTimeout(guard);
+      rmSync(preloadDir, { recursive: true, force: true });
+      reject(error);
+    });
+
+    proc.on('close', (code, signal) => {
+      clearTimeout(guard);
+      // What the preload recorded, read before the directory holding it goes.
+      let raised;
+      try {
+        raised = existsSync(emitPath)
+          ? JSON.parse(readFileSync(emitPath, 'utf8'))
+          : undefined;
+      } catch (error) {
+        rmSync(preloadDir, { recursive: true, force: true });
+        reject(error);
+        return;
+      }
+      rmSync(preloadDir, { recursive: true, force: true });
+      settle({
+        code,
+        signal,
+        stdout,
+        stderr,
+        pid,
+        timedOut,
+        triggered,
+        delivered: raised === undefined ? null : raised.delivered,
+      });
+    });
+  });
+}
+
+/**
+ * A phase that includes integrity markers (gate and pin checks).
+ * Used to test gate_check and pin_check trace events.
+ */
+export function integrityCheckPhase({
+  gatePass = true,
+  pinPass = true,
+  gateName = 'bar-sha256',
+  pinName = 'spec-file',
+  gateDetail = '',
+  pinDetail = '',
+} = {}) {
+  const gateMarker =
+    '@exolvra-genesis integrity gate | ' +
+    gateName +
+    ' | ' +
+    (gatePass ? 'pass' : 'fail') +
+    (gateDetail ? ' | ' + gateDetail : ' |');
+  const pinMarker =
+    '@exolvra-genesis integrity pin | ' +
+    pinName +
+    ' | ' +
+    (pinPass ? 'pass' : 'fail') +
+    (pinDetail ? ' | ' + pinDetail : ' |');
+  return [
+    {
+      type: 'assistant',
+      session_id: 'sesn_integrity_test',
+      message: {
+        content: [
+          { type: 'text', text: 'Verifying integrity...\n' + gateMarker + '\n' + pinMarker },
+        ],
+      },
+    },
+  ];
 }

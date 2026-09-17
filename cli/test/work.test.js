@@ -1,3 +1,4 @@
+import { PREFLIGHT_FAKE } from './preflight-fake.js';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -90,6 +91,7 @@ import { dirname, join } from 'node:path';
 let phaseIndex = 0;
 
 export function query({ prompt, options }) {
+${PREFLIGHT_FAKE}
   const plan = JSON.parse(readFileSync(process.env.EXOLVRA_GENESIS_WORK_FAKE, 'utf8'));
   const phase = plan.phases[Math.min(phaseIndex, plan.phases.length - 1)] ?? {};
   phaseIndex += 1;
@@ -131,13 +133,15 @@ export function query({ prompt, options }) {
     },
     async *[Symbol.asyncIterator]() {
       for (const write of phase.writes ?? []) put(write.path, write.text);
-      if (phase.progress !== undefined) put('.exolvra-genesis/progress.html', phase.progress);
+      const active = JSON.parse(readFileSync(join(options.cwd, '.exolvra-genesis/state.json'), 'utf8')).run;
+      const artifactRoot = '.exolvra-genesis/runs/' + active;
+      if (phase.progress !== undefined) put(artifactRoot + '/progress.html', phase.progress);
       if (phase.barPins !== undefined) {
         const lines = [];
         for (let i = 0; i < phase.barPins; i += 1) {
           lines.push('a'.repeat(63) + i + '  artifact-' + i + '.txt');
         }
-        put('.exolvra-genesis/bar/bar.sha256', lines.join('\\n') + '\\n');
+        put(artifactRoot + '/bar/bar.sha256', lines.join('\\n') + '\\n');
       }
       // Editing the pinned snapshot is what C11 says every round re-verifies —
       // before the work starts, or in the moments after the last round, which
@@ -178,8 +182,12 @@ export function query({ prompt, options }) {
         put('.exolvra-genesis/state.json', JSON.stringify({ status: phase.state }, null, 2) + '\\n');
       }
       if (phase.hold === true) {
-        await held;
-        return;
+        if (phase.readyFile) put(phase.readyFile, active);
+        const alive = setInterval(() => {}, 1000);
+        try { await held; } finally { clearInterval(alive); }
+        if (phase.finalAfterInterrupt !== true) return;
+        await new Promise((resolve) => setTimeout(resolve, phase.finalDelayMs ?? 0));
+        for (const write of phase.finalWrites ?? []) put(write.path, write.text);
       }
       const result = phase.result;
       if (result === undefined || result === null) return;
@@ -2359,8 +2367,16 @@ test('R1/R4/R9/R10/R11: three issues — a win, a block, and a triage', async ()
 
   /* ---- R3/C11: the snapshot is on disk, pinned, and still verifies -------- */
 
-  const dirs = runDirs(cwd);
-  assert.equal(dirs.length, 3, 'expected a run directory per issue, got ' + dirs.join(', '));
+  const allDirs = runDirs(cwd);
+  const dirs = allDirs.filter((id) => existsSync(join(cwd, '.exolvra-genesis', 'runs', id, 'issue.md')));
+  assert.equal(dirs.length, 3, 'expected a snapshot directory per issue, got ' + dirs.join(', '));
+  const owners = allDirs.filter((id) => existsSync(join(cwd, '.exolvra-genesis', 'runs', id, 'issue-owner.json')));
+  assert.equal(owners.length, 2, 'every issue that starts a loop links its ledger run to its claim snapshot');
+  for (const id of owners) {
+    const owner = JSON.parse(readFileSync(join(cwd, '.exolvra-genesis', 'runs', id, 'issue-owner.json'), 'utf8'));
+    assert.equal(owner.run, id);
+    assert.ok(dirs.includes(owner.issueRun));
+  }
   let pages = 0;
   for (const id of dirs) {
     const snapshot = readFileSync(join(cwd, '.exolvra-genesis', 'runs', id, 'issue.md'), 'utf8');
@@ -2434,7 +2450,7 @@ test('R1/R4/R9/R10/R11: three issues — a win, a block, and a triage', async ()
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.length >= 60 && !line.includes('${'))
+    .filter((line) => line.length >= 60 && !line.includes('${') && !line.includes('$RUN_'))
     .sort((a, b) => b.length - a.length)[0];
   assert.ok(sentence !== undefined, 'commands/run.md has no prose to compare against');
   assert.ok(
@@ -3042,6 +3058,65 @@ test('R15: an interrupt with work on the branch pushes it and blocks the issue',
   // This one *was* pushed, so here the link is the truth and is drawn.
   const branchLine = sticky.split(NL).find((line) => line.startsWith('- **Branch**'));
   assert.match(branchLine, /\]\(https:\/\/github\.com\/cli\/cli\/tree\/exolvra-genesis\/issue-801-/);
+});
+
+for (const withWork of [false, true]) {
+  test('live stop and terminal SIGINT settle the same GitHub and disk state ' + (withWork ? 'with partial work' : 'before work'), async () => {
+    const endings = [];
+    for (const mode of ['terminal', 'external-stop']) {
+      const fake = await threeIssues(), { work: cwd, bare } = checkout();
+      const ready = '.exolvra-genesis/stop-ready';
+      const phase = { progress: PAGE, messages: [OPENING], hold: true,
+        finalAfterInterrupt: true, finalDelayMs: 350, result: { costUsd: 0.13 },
+        ...(withWork ? { writes: [{ path: 'src/partial.txt', text: 'partial work\n' }] } : {}),
+        ...(mode === 'terminal' ? { interruptAfter: 1 } : { readyFile: ready }),
+      };
+      const running = work(fake, ['--repo', 'cli/cli', '--plugin-dir', REPO_ROOT], { cwd, phases: [phase] });
+      let stopped;
+      if (mode === 'external-stop') {
+        const deadline = Date.now() + 15_000;
+        while (!existsSync(join(cwd, ready))) {
+          assert.ok(Date.now() < deadline, 'issue owner did not reach its active SDK session');
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        const id = readFileSync(join(cwd, ready), 'utf8');
+        stopped = await runCli('stop', undefined, [id, '--grace-seconds', '10'], { cwd });
+        assert.equal(stopped.code, 0, stopped.stdout + stopped.stderr);
+        assert.match(stopped.stdout, /issue lifecycle verified as /);
+      }
+      const result = await running;
+      assert.equal(result.code, 1, result.stdout + result.stderr);
+      const row = ledger(cwd)[0];
+      assert.equal(row.costUsd, 0.13, 'the final SDK receipt must settle before the issue claim');
+      const state = JSON.parse(readFileSync(join(cwd, '.exolvra-genesis/state.json'), 'utf8'));
+      const owner = JSON.parse(readFileSync(join(cwd, '.exolvra-genesis/runs', row.id, 'issue-owner.json'), 'utf8'));
+      assert.equal(owner.settled, true);
+      endings.push({ status: state.status, ledgerStatus: row.status, rounds: row.rounds ?? 0, costUsd: row.costUsd ?? 0,
+        labels: fake.labelsOf('cli', 'cli', 801).sort(), operations: labelOps(fake),
+        branches: remoteBranches(bare), pulls: fake.pullsOpened().length, lifecycle: owner.lifecycle,
+        file: existsSync(join(cwd, 'src/partial.txt')) ? readFileSync(join(cwd, 'src/partial.txt'), 'utf8') : null });
+    }
+    assert.deepEqual(endings[1], endings[0]);
+  });
+}
+
+test('a settled blocked issue keeps its truthful ledger while the next ready issue runs', async () => {
+  const fake = await threeIssues(), { work: cwd } = checkout();
+  const first = losingPhase('src/blocked-first.txt'); first.state = 'blocked';
+  first.result = { subtype: 'error_during_execution', errors: ['the dependency requires a human decision'], costUsd: 0.11 };
+  const result = await work(fake, ['--repo', 'cli/cli', '--max-issues', '2', '--plugin-dir', REPO_ROOT], {
+    cwd, phases: [first, winningPhase('src/next-issue.txt')], env: { EXOLVRA_GENESIS_AUTO_RESUMES: '0' },
+  });
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  const rows = ledger(cwd);
+  assert.equal(rows.length, 2, result.stdout + result.stderr);
+  assert.equal(rows[0].status, 'blocked');
+  assert.equal(rows[1].status, 'complete');
+  assert.deepEqual(fake.labelsOf('cli', 'cli', 801).sort(), ['bug', BLOCKED].sort());
+  assert.deepEqual(fake.labelsOf('cli', 'cli', 802), [REVIEW]);
+  const owner = JSON.parse(readFileSync(join(cwd, '.exolvra-genesis/runs', rows[0].id, 'issue-owner.json'), 'utf8'));
+  assert.equal(owner.settled, true);
+  assert.equal(owner.lifecycle, BLOCKED);
 });
 
 /* -------------------------------------------------------------------------- */

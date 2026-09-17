@@ -147,7 +147,7 @@ import {
   parseInvocation,
   registerCommand,
 } from '../registry.js';
-import { RUN_DIR, newRunId, readRuns, updateRun } from '../runs-store.js';
+import { RUN_DIR, newRunId, readRuns, updateRun, readState, runDirectory, writeAtomic } from '../runs-store.js';
 import {
   STANDARDS_PATH,
   type Standards,
@@ -1087,9 +1087,11 @@ function readStandards(cwd: string): { standards: Standards | null; pin?: Standa
 /** The bar the loop pinned for this run, when it left one behind. */
 function readBarPin(cwd: string): { path: string; pins: number } | undefined {
   try {
-    const text = readFileSync(join(cwd, RUN_DIR, 'bar', 'bar.sha256'), 'utf8');
+    const id = readState(cwd).run;
+    const root = id === undefined ? join(cwd, RUN_DIR) : runDirectory(cwd, id);
+    const text = readFileSync(join(root, 'bar', 'bar.sha256'), 'utf8');
     return {
-      path: RUN_DIR + '/bar/bar.sha256',
+      path: id === undefined ? RUN_DIR + '/bar/bar.sha256' : RUN_DIR + '/runs/' + id + '/bar/bar.sha256',
       pins: text.split('\n').filter((line) => /^[0-9a-f]{64}\s/.test(line.trim())).length,
     };
   } catch {
@@ -1709,6 +1711,18 @@ async function runWork(argv: string[], ctx: Ctx): Promise<number> {
     for (const candidate of prepared.ready) {
       if (pass.interrupted()) break;
       const outcome = await workIssue(pass, candidate);
+      const inner = readState(pass.cwd).run;
+      if (inner !== undefined && outcome.label !== undefined && outcome.label !== 'working') {
+        const ownerPath = join(runDirectory(pass.cwd, inner), 'issue-owner.json');
+        try {
+          const owner = JSON.parse(readFileSync(ownerPath, 'utf8'));
+          if (owner.run === inner && owner.repo === repoSlug(outcome.repo) && owner.issue === outcome.issue) {
+            writeAtomic(ownerPath, JSON.stringify({ ...owner, settled: true, lifecycle: lifecycleLabel(outcome.label), settledAt: new Date().toISOString() }) + '\n');
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
       outcomes.push(outcome);
       if (outcome.halt === true) break;
     }
@@ -2385,6 +2399,12 @@ async function workIssue(pass: Pass, candidate: Candidate): Promise<IssueOutcome
   const sink = lineStream((line) => {
     const event = readEvent(line);
     if (event === undefined) return;
+    if (event.type === 'run_started') {
+      const inner = readState(pass.cwd).run;
+      if (inner !== undefined) writeAtomic(join(runDirectory(pass.cwd, inner), 'issue-owner.json'), JSON.stringify({
+        run: inner, issueRun: runId, repo: repoSlug(repo), issue: number, snapshot: runDirDisplay(runId) + '/' + SNAPSHOT_FILE,
+      }) + '\n');
+    }
     reporter.emit(event);
     if (event.type === 'round') onRound(event);
     else if (event.type === 'plan_ready') {
@@ -3329,6 +3349,7 @@ async function releaseOnInterrupt(
       repo: about.repo,
       issue: about.issue,
       result: 'skipped',
+      label: lifecycleOf(move.labels),
       detail: 'interrupted; nothing was committed, so it is back at ' + READY,
       halt: true,
     };
@@ -3374,6 +3395,7 @@ async function releaseOnInterrupt(
     repo: about.repo,
     issue: about.issue,
     result: 'blocked',
+    label: lifecycleOf(move.labels),
     detail: 'interrupted with work on ' + about.branch,
     halt: true,
   };

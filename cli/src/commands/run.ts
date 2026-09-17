@@ -1,6 +1,13 @@
 import { join, resolve } from 'node:path';
+import { reportSections } from '../consistency.js';
 
 import { renderLeadPrompt } from '../agents.js';
+import { coordinatorFlag, coordinatorEnv, createDistributedLead, type DistributedLead } from '../distributed-lead.js';
+import { RoundCoordinator } from '../distributed.js';
+import { type TraceStore, openTrace } from '../trace-store.js';
+import { toRecord, type BudgetSpendPayload } from '../trace-events.js';
+import { recordPreflight } from '../run-evidence.js';
+import { preflightReceipt, preflightSpendDetail, type ExecutionPreflight } from '../preflight.js';
 import {
   type Budget,
   type BudgetTrip,
@@ -10,9 +17,11 @@ import {
 } from '../budget.js';
 import { autoResumeDelayMs, autoResumeLimit, configFromChoices, loadConfig, saveConfig } from '../config.js';
 import type { ExolvraGenesisConfig } from '../config.js';
+import { waitForRetry, watchRunStop } from '../run-control.js';
 import type {
   BarArtifact,
   PlanPiece,
+  RunEvent,
   RunStatus as OutcomeStatus,
   Verdict,
 } from '../events.js';
@@ -62,7 +71,9 @@ import {
 import {
   RUN_DIR,
   type RunStatus as LedgerStatus,
-  appendRun,
+  beginRun,
+  assertCanStart,
+  runDirectory,
   newRunId,
   readState,
   updateRun,
@@ -74,6 +85,7 @@ import {
   type SessionResult,
   assistantText,
   createSession,
+  preflightExecution,
 } from '../session.js';
 import {
   PROGRAM,
@@ -87,6 +99,301 @@ import {
   wrapText,
 } from '../usage.js';
 import { positionalTokens } from './resume.js';
+
+/* -------------------------------------------------------------------------- */
+/* Trace event production — the one chokepoint (C5)                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Maps a RunEvent to trace records and appends them to the store.
+ *
+ * This is the single funnel that every RunEvent passes through on its way to
+ * the trace. The mapping is:
+ *
+ * | RunEvent type  | Trace kind(s)                                            |
+ * | -------------- | -------------------------------------------------------- |
+ * | run_started    | run_started                                              |
+ * | run_finished   | run_finished                                             |
+ * | bar_captured   | (not in N2 — no trace record)                            |
+ * | plan_ready     | piece_dispatched (one per piece)                         |
+ * | round          | verdict_recorded                                         |
+ * | agent_output   | (no direct mapping — carries prose, not an event)        |
+ * | notice         | error_path (when level is 'error')                       |
+ *
+ * Additional kinds produced by observing tool_use/tool_result blocks in onMessage:
+ * - builder_round_started: when a Task tool_use names the builder agent
+ * - builder_round_ended: when the corresponding tool_result arrives
+ * - critic_dispatched: when a Task tool_use names the critic agent
+ * - process_event: R2 process rows (opened/closed on Task dispatch/completion)
+ *
+ * Additional kinds produced by integrity markers parsed in readMarkers:
+ * - gate_check: when an integrity gate marker is read
+ * - pin_check: when an integrity pin marker is read
+ *
+ * Additional kinds produced directly in onMessage when a result arrives:
+ * - budget_spend: when a turn ends and the provider reports cost/tokens
+ */
+export function appendTraceEvent(trace: TraceStore, runId: string, event: RunEvent): void {
+  switch (event.type) {
+    case 'run_started':
+      trace.append(
+        toRecord(
+          { kind: 'run_started', payload: { goal: event.goal, source: event.source } },
+          { runId },
+        ),
+      );
+      break;
+
+    case 'run_finished':
+      trace.append(
+        toRecord(
+          {
+            kind: 'run_finished',
+            payload: {
+              status: event.status,
+              rounds: event.rounds,
+              costUsd: event.costUsd,
+              ...(event.sessionId === undefined ? {} : { sessionId: event.sessionId }),
+            },
+          },
+          { runId },
+        ),
+      );
+      break;
+
+    case 'plan_ready':
+      // One piece_dispatched event per piece in the plan
+      for (const piece of event.pieces) {
+        trace.append(
+          toRecord(
+            {
+              kind: 'piece_dispatched',
+              piece: piece.id,
+              payload: { pieceId: piece.id, title: piece.title },
+            },
+            { runId },
+          ),
+        );
+      }
+      break;
+
+    case 'round':
+      trace.append(
+        toRecord(
+          {
+            kind: 'verdict_recorded',
+            piece: event.piece,
+            round: event.round,
+            payload: {
+              verdict: event.verdict,
+              ...(event.gap === undefined ? {} : { gap: event.gap }),
+            },
+          },
+          { runId },
+        ),
+      );
+      break;
+
+    case 'notice':
+      // Only error-level notices become error_path records
+      if (event.level === 'error') {
+        trace.append(
+          toRecord(
+            { kind: 'error_path', payload: { fault: 'notice', detail: event.message } },
+            { runId },
+          ),
+        );
+      }
+      break;
+
+    // bar_captured and agent_output have no corresponding trace event kinds
+    case 'bar_captured':
+    case 'agent_output':
+      break;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Subagent observation — tool_use/tool_result blocks in the SDK stream        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * State for tracking subagent dispatches observed via tool_use/tool_result.
+ *
+ * A subagent dispatch is a `tool_use` block with name `Task` whose input
+ * names the agent. Its completion is the corresponding `tool_result` block,
+ * identified by matching `tool_use_id`.
+ */
+interface SubagentTracker {
+  /** Maps tool_use id to the role that was dispatched. */
+  pendingTasks: Map<string, { role: 'builder' | 'critic'; piece: string | null; round: number | null; attempt: number }>;
+  /** Current round number, incremented when a builder is dispatched. */
+  builderAttempt: number;
+}
+
+export function createSubagentTracker(): SubagentTracker {
+  return {
+    pendingTasks: new Map(),
+    builderAttempt: 0,
+  };
+}
+
+/**
+ * Content block from an assistant message, typed loosely to avoid SDK coupling.
+ */
+export interface ContentBlock {
+  type: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  tool_use_id?: string;
+  is_error?: boolean;
+  content?: unknown;
+}
+
+/**
+ * Observes content blocks from an assistant message for subagent dispatches.
+ *
+ * When a `tool_use` block names the Task tool with an agent input that matches
+ * `exolvra-genesis-builder` or `exolvra-genesis-critic`, we:
+ * - Emit builder_round_started or critic_dispatched
+ * - Open a process row (R2)
+ *
+ * When a `tool_result` block arrives, we match it to the pending task and:
+ * - Emit builder_round_ended (for builders)
+ * - Close the process row (R2)
+ */
+export function observeSubagentBlocks(
+  blocks: readonly ContentBlock[],
+  tracker: SubagentTracker,
+  trace: TraceStore,
+  runId: string,
+): void {
+  for (const block of blocks) {
+    if (block.type === 'tool_use' && (block.name === 'Task' || block.name === 'Agent') && block.id) {
+      // Extract agent name from input
+      const input = block.input as { agent?: string; subagent_type?: string; prompt?: string } | undefined;
+      const agent = input?.subagent_type ?? input?.agent;
+      if (typeof agent !== 'string') continue;
+
+      let role: 'builder' | 'critic' | undefined;
+      if (agent.includes('builder') || agent === 'exolvra-genesis-builder') {
+        role = 'builder';
+      } else if (agent.includes('critic') || agent === 'exolvra-genesis-critic') {
+        role = 'critic';
+      }
+      if (role === undefined) continue;
+
+      // Track the pending task
+      let metadata: { piece?: unknown; round?: unknown } = {};
+      try { metadata = JSON.parse(input?.prompt?.match(/```genesis-(?:task|critic)\s*\n([\s\S]*?)\n```/)?.[1] ?? '{}') as typeof metadata; } catch { /* Older transport has no metadata. */ }
+      const piece = typeof metadata?.piece === 'string' ? metadata.piece : null;
+      const round: number | null = typeof metadata?.round === 'number' && Number.isSafeInteger(metadata.round) && metadata.round > 0 ? metadata.round : null;
+      if (role === 'builder') {
+        tracker.builderAttempt += 1;
+      }
+      tracker.pendingTasks.set(block.id, { role, piece, round, attempt: tracker.builderAttempt });
+
+      // Emit the event
+      if (role === 'builder') {
+        trace.append(
+          toRecord(
+            {
+              kind: 'builder_round_started',
+              piece,
+              round: round ?? undefined,
+              payload: { attempt: tracker.builderAttempt },
+            },
+            { runId },
+          ),
+        );
+      } else {
+        trace.append(
+          toRecord(
+            {
+              kind: 'critic_dispatched',
+              piece,
+              round: round ?? undefined,
+              payload: { criticId: block.id },
+            },
+            { runId },
+          ),
+        );
+      }
+
+      // Open process row (R2). Builder/critic tasks run in the same CLI process
+      // as the lead, so they record the same pid.
+      trace.openProcess({
+        runId,
+        taskId: block.id,
+        role,
+        piece,
+        round,
+        openedAt: Date.now(),
+        pid: process.pid,
+      });
+
+      // Emit process_event for the open
+      trace.append(
+        toRecord(
+          {
+            kind: 'process_event',
+            piece,
+            round: round ?? undefined,
+            payload: { action: 'opened', taskId: block.id, role },
+          },
+          { runId },
+        ),
+      );
+    }
+
+    if (block.type === 'tool_result' && block.tool_use_id) {
+      const pending = tracker.pendingTasks.get(block.tool_use_id);
+      if (pending === undefined) continue;
+
+      tracker.pendingTasks.delete(block.tool_use_id);
+      const outcome: 'complete' | 'failed' = block.is_error ? 'failed' : 'complete';
+
+      // Emit builder_round_ended for builders
+      if (pending.role === 'builder') {
+        const content = typeof block.content === 'string' ? block.content : Array.isArray(block.content)
+          ? block.content.map((part: { type?: string; text?: string }) => part?.type === 'text' ? part.text ?? '' : '').join('\n') : '';
+        const verification = reportSections(content)['VERIFICATION']?.trim();
+        trace.append(
+          toRecord(
+            {
+              kind: 'builder_round_ended',
+              piece: pending.piece,
+              round: pending.round ?? undefined,
+              payload: {
+                attempt: pending.attempt,
+                verbatimVerification: !block.is_error && Boolean(verification),
+                ...(verification ? { verificationOutput: verification } : {}),
+              },
+            },
+            { runId },
+          ),
+        );
+      }
+
+      // Close process row (R2)
+      trace.closeProcess(block.tool_use_id, outcome);
+
+      // Emit process_event for the close
+      trace.append(
+        toRecord(
+          {
+            kind: 'process_event',
+            piece: pending.piece,
+            round: pending.round ?? undefined,
+            payload: { action: 'closed', taskId: block.tool_use_id, role: pending.role, outcome },
+          },
+          { runId },
+        ),
+      );
+    }
+  }
+}
 
 /**
  * Generous, because a run is the real thing rather than a preview: the loop
@@ -111,7 +418,9 @@ const PROGRESS_PAGE = 'progress.html';
  * has pointed the run somewhere else.
  */
 export function progressPage(cwd: string, from: string): string {
-  return cwd === resolve(from) ? RUN_DIR + '/' + PROGRESS_PAGE : join(cwd, RUN_DIR, PROGRESS_PAGE);
+  const id = readState(cwd).run;
+  const parts = id === undefined ? [RUN_DIR, PROGRESS_PAGE] : [RUN_DIR, 'runs', id, PROGRESS_PAGE];
+  return cwd === resolve(from) ? parts.join('/') : join(cwd, ...parts);
 }
 
 /**
@@ -244,6 +553,7 @@ const noConfigFlag: BooleanFlagSpec = {
 };
 
 const flags: FlagSpec[] = [
+  coordinatorFlag,
   autoFlag,
   modelFlag,
   builderModelFlag,
@@ -294,7 +604,7 @@ const runCommand: Command = {
   ],
   flags,
   argument: runArgument,
-  env: [pluginDirEnv],
+  env: [pluginDirEnv, coordinatorEnv],
   cwdFlag: directoryFlag,
   sections: [
     {
@@ -405,11 +715,14 @@ const REPORT_DIRECTIVE = [
   '  ' + MARKER + ' artifact <path> | <one line on what it is the bar for>',
   '  ' + MARKER + ' piece <id> | <one line on what it builds>',
   '  ' + MARKER + ' round <piece id> | <number> | <WIN|LOSS|BLOCKED> | <gap>',
+  '  ' + MARKER + ' integrity <gate|pin> | <name> | <pass|fail> | <detail>',
   '',
   'Emit the bar and artifact lines once the bar is pinned, one piece line per',
   'piece once they are known, and one round line the moment a judgement lands —',
   'never in advance of one, and never twice for the same round. The gap is the',
   'single sentence the critic gave, on one line, and is left empty on a WIN.',
+  'Emit an integrity line each time you verify a gate or pin; the name is the',
+  'identifier you gave it, and the detail explains any failure.',
   'Write nothing else on a marker line: everything else you have to say goes in',
   'the prose around them, as usual.',
 ].join('\n');
@@ -425,6 +738,13 @@ type Marker =
       round: number;
       verdict: Verdict;
       gap: string;
+    }
+  | {
+      kind: 'integrity';
+      check: 'gate' | 'pin';
+      name: string;
+      passed: boolean;
+      detail: string;
     };
 
 /**
@@ -490,6 +810,7 @@ const MARKER_FIELDS: Record<string, number> = {
   artifact: 2,
   piece: 2,
   round: 4,
+  integrity: 4,
 };
 
 function readMarker(kind: string, body: string): Marker | undefined {
@@ -519,6 +840,22 @@ function readMarker(kind: string, body: string): Marker | undefined {
     const round = Number(number);
     if (round < 1 || !Number.isSafeInteger(round)) return undefined;
     return { kind: 'round', piece, round, verdict, gap: at(3) };
+  }
+  if (kind === 'integrity') {
+    const checkKind = at(0);
+    const name = at(1);
+    const verdictWord = at(2).toLowerCase();
+    // Only 'gate' or 'pin' is valid; only 'pass' or 'fail' is valid.
+    if (checkKind !== 'gate' && checkKind !== 'pin') return undefined;
+    if (verdictWord !== 'pass' && verdictWord !== 'fail') return undefined;
+    if (name === '') return undefined;
+    return {
+      kind: 'integrity',
+      check: checkKind,
+      name,
+      passed: verdictWord === 'pass',
+      detail: at(3),
+    };
   }
   return undefined;
 }
@@ -588,6 +925,11 @@ export interface MarkerWatcherOptions {
    * turn produced.
    */
   onMessageEnd?(): void;
+  /**
+   * Called for each integrity check (gate or pin) the agent reports.
+   * The piece and round are from the most recent round marker, or null if none.
+   */
+  onIntegrity?(check: 'gate' | 'pin', name: string, passed: boolean, detail: string, piece: string | null, round: number | null): void;
 }
 
 export interface MarkerWatcher {
@@ -597,6 +939,10 @@ export interface MarkerWatcher {
   flushPlan(): void;
   readonly barPath: string | undefined;
   readonly pieces: readonly PlanPiece[];
+  /** The piece from the most recent round marker, or null if none seen yet. */
+  readonly lastRoundPiece: string | null;
+  /** The round number from the most recent round marker, or null if none seen yet. */
+  readonly lastRoundNumber: number | null;
 }
 
 /**
@@ -620,6 +966,9 @@ export function createMarkerWatcher(options: MarkerWatcherOptions): MarkerWatche
   let planReported = false;
   let roundStartedAt = Date.now();
   let warnedUnreadable = false;
+  // Track the most recent round marker's piece and round for stamping integrity events
+  let lastRoundPiece: string | null = null;
+  let lastRoundNumber: number | null = null;
 
   const flushBar = (): void => {
     if (barReported) return;
@@ -645,6 +994,12 @@ export function createMarkerWatcher(options: MarkerWatcherOptions): MarkerWatche
     },
     get pieces(): readonly PlanPiece[] {
       return pieces;
+    },
+    get lastRoundPiece(): string | null {
+      return lastRoundPiece;
+    },
+    get lastRoundNumber(): number | null {
+      return lastRoundNumber;
     },
     flushPlan,
     read(text: string): void {
@@ -684,7 +1039,14 @@ export function createMarkerWatcher(options: MarkerWatcherOptions): MarkerWatche
           pieces.push({ id: marker.id, title: marker.title });
           continue;
         }
+        if (marker.kind === 'integrity') {
+          options.onIntegrity?.(marker.check, marker.name, marker.passed, marker.detail, lastRoundPiece, lastRoundNumber);
+          continue;
+        }
         flushPlan();
+        // Track the round marker for stamping subsequent integrity events
+        lastRoundPiece = marker.piece;
+        lastRoundNumber = marker.round;
         const now = Date.now();
         reporter.emit({
           type: 'round',
@@ -898,6 +1260,8 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   }
 
   const cwd = args.cwd;
+  const coordinatorRoot = args.get(coordinatorFlag) ?? args.env(coordinatorEnv);
+  if (coordinatorRoot !== undefined) new RoundCoordinator(coordinatorRoot);
   const json = args.bool(jsonFlag);
   const verbose = args.bool(verboseFlag);
   const noConfig = args.bool(noConfigFlag);
@@ -966,6 +1330,24 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   const env =
     pluginDir === undefined ? ctx.env : { ...ctx.env, [PLUGIN_DIR_ENV]: pluginDir };
   const sources = loadPluginSources(env);
+  assertCanStart(cwd);
+  let preflight: ExecutionPreflight;
+  try {
+    preflight = await preflightExecution({ cwd, sources, models, env,
+      modelSource: args.get(modelFlag) !== undefined ? 'flag' : config.models?.lead !== undefined ? 'config' : 'inherit',
+      permissionMode: args.get(permissionModeFlag) ?? 'bypassPermissions', isTTY: interactive,
+      maxBudgetUsd: args.get(maxCostFlag),
+      confirmBypass: () => prompts.askConfirm('Command execution was refused. Continue this run with bypassPermissions?', io, { initial: false }),
+    });
+  } catch (error) {
+    if (prompts.isPromptCancelled(error)) {
+      const receipt = preflightReceipt(error);
+      if (receipt) ctx.stderr.write(preflightSpendDetail(receipt) + '\n');
+      return EXIT.LOSS; // The prompt already closed its cancellation frame.
+    }
+    if (interactive) prompts.endRun('Nothing started', io);
+    throw error;
+  }
 
   if (startup.asked && !noConfig) {
     // Preferences, not the run: what is worth defaulting to next time is every
@@ -1000,7 +1382,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   const frame: RunFrame | undefined = interactive
     ? prompts.createRunFrame(frameIo, { verbose, progress })
     : undefined;
-  const reporter: Reporter =
+  const baseReporter: Reporter =
     frame ?? createReporter({ json, verbose, stream: out, view });
   const budget: Budget = createBudget({
     ...(args.get(maxRoundsFlag) === undefined
@@ -1012,7 +1394,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   });
 
   const runId = newRunId();
-  appendRun(cwd, {
+  const archived = beginRun(cwd, {
     id: runId,
     sessionId: null,
     input: inputAsTyped(input),
@@ -1022,7 +1404,41 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   });
   // Written before a turn is taken, so the Stop hook that greps this file sees a
   // run in progress from the first moment there is one.
-  writeState(cwd, 'running');
+  if (archived.length > 0) baseReporter.emit({ type: 'notice', level: 'note', message: 'Archived previous run artifacts: ' + archived.join(', ') });
+
+  // Open the trace store. Warnings from the store are emitted through the base
+  // reporter directly, not the wrapped one, to avoid infinite recursion.
+  // Failures degrade gracefully (R6: trace failure never fails a run).
+  const trace: TraceStore = openTrace(cwd, runId, (warning) => {
+    baseReporter.emit({ type: 'notice', level: 'warning', message: warning });
+  });
+  recordPreflight(cwd, runId, preflight, trace);
+  const preflightTrip = budget.addCost(preflight.costUsd);
+
+  // Open the lead process row. The lead is the CLI process that owns this run.
+  // An unclosed lead row is the signature of a killed run (SIGKILL): it cannot
+  // close itself in a signal handler, and the absence of closure is the fact
+  // a reader uses to tell a running run from a dead one.
+  const leadTaskId = 'lead-' + runId;
+  trace.openProcess({
+    runId,
+    taskId: leadTaskId,
+    role: 'lead',
+    piece: null,
+    round: null,
+    openedAt: Date.now(),
+    pid: process.pid,
+  });
+
+  // Wrap the reporter to tap all events and append them to the trace store.
+  // This is the one chokepoint (C5): every RunEvent that goes to the renderer
+  // also becomes a trace record, mapped through T2's toRecord.
+  const reporter: Reporter = {
+    emit(event) {
+      baseReporter.emit(event);
+      appendTraceEvent(trace, runId, event);
+    },
+  };
 
   reporter.emit({
     type: 'run_started',
@@ -1030,7 +1446,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     source: input.kind === 'spec' ? 'spec' : 'goal',
   });
 
-  const page = join(cwd, RUN_DIR, PROGRESS_PAGE);
+  const page = join(runDirectory(cwd, runId), PROGRESS_PAGE);
   reporter.emit({ type: 'notice', level: 'note', message: progressPage(cwd, ctx.cwd) });
   if (args.bool(openFlag)) {
     const outcome = await openPath(page);
@@ -1059,7 +1475,12 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   let stopped: BudgetTrip | undefined;
   let interruptions = 0;
   let session: Session | undefined;
+  let activeTurn: Promise<SessionResult> | undefined;
+  let distributed: DistributedLead | undefined;
   let releaseStop: (() => void) | undefined;
+
+  // The provider bills the lead query, which may span many nested rounds.
+  // Preserve its exact total without inventing a per-piece dollar split.
   const stopWaiter = new Promise<void>((resolve) => {
     releaseStop = resolve;
   });
@@ -1106,8 +1527,38 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       tripped(trip);
     },
     onMessageEnd: announce,
+    onIntegrity(check, name, passed, detail, piece, round): void {
+      // Emit trace event for gate_check or pin_check. The payload types match
+      // those already defined in trace-events.ts.
+      const kind = check === 'gate' ? 'gate_check' : 'pin_check';
+      const payload =
+        check === 'gate'
+          ? { gate: name, passed, ...(detail === '' ? {} : { detail }) }
+          : { pin: name, passed, ...(detail === '' ? {} : { detail }) };
+      // toRecord expects round as number | undefined (undefined becomes null in the record)
+      const roundForRecord = round === null ? undefined : round;
+      trace.append(
+        toRecord({ kind, payload, piece, round: roundForRecord } as
+          | { kind: 'gate_check'; piece?: string | null; round?: number; payload: { gate: string; passed: boolean; detail?: string } }
+          | { kind: 'pin_check'; piece?: string | null; round?: number; payload: { pin: string; passed: boolean; detail?: string } },
+          { runId },
+        ),
+      );
+      // A failed integrity check must be visible in the default view. Warning
+      // level so it does not duplicate as error_path (only error notices do).
+      if (!passed) {
+        const checkType = check === 'gate' ? 'gate' : 'pin';
+        const message = detail === ''
+          ? `${checkType} check failed: ${name}`
+          : `${checkType} check failed: ${name} (${detail})`;
+        reporter.emit({ type: 'notice', level: 'warning', message });
+      }
+    },
   });
   const flushPlan = watcher.flushPlan;
+
+  // Track subagent dispatches via tool_use/tool_result blocks
+  const subagentTracker = createSubagentTracker();
 
   const onMessage = (message: SdkMessage): void => {
     // Once the run has been reported as finished, its stream is closed: a line
@@ -1138,9 +1589,42 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       }
     }
 
+    // Observe tool_use/tool_result blocks for subagent dispatches (R2, builder/critic events)
+    if (message.type === 'assistant' || message.type === 'user') {
+      const content = (message as { message?: { content?: unknown } }).message?.content;
+      if (Array.isArray(content)) {
+        observeSubagentBlocks(content as ContentBlock[], subagentTracker, trace, runId);
+      }
+    }
+
     // The provider's own figure, taken where the provider reports it. Nothing
     // here estimates a cost from token counts.
-    if (message.type === 'result') tripped(budget.addCost(message.total_cost_usd));
+    if (message.type === 'result') {
+      tripped(budget.addCost(message.total_cost_usd));
+
+      // Emit budget_spend with the real token counts from the SDK (R5). We read
+      // from `usage` (Anthropic API snake_case shape) rather than `modelUsage`
+      // (camelCase per-model breakdown) for consistency and directness.
+      const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+      const spend: BudgetSpendPayload = {
+        attribution: 'session',
+        inputTokens: typeof usage?.input_tokens === 'number' ? usage.input_tokens : 0,
+        outputTokens: typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0,
+        costUsd: message.total_cost_usd,
+      };
+
+      // Emit the trace event
+      trace.append(
+        toRecord(
+          {
+            kind: 'budget_spend',
+            piece: null,
+            payload: spend,
+          },
+          { runId },
+        ),
+      );
+    }
 
     const text = assistantText(message).trim();
     if (text !== '') watcher.read(text);
@@ -1168,6 +1652,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     releaseStop?.();
   };
   process.on('SIGINT', onInterrupt);
+  const releaseControl = watchRunStop(cwd, runId);
 
   const interrupted = (): boolean => interruptions > 0;
 
@@ -1180,7 +1665,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     resumeFrom?: string,
   ): Promise<SessionResult | undefined> => {
     const current = createSession({
-      prompt,
+      prompt: prompt + (distributed?.directive(sources.runMd) ?? ''),
       sources,
       models,
       cwd,
@@ -1190,14 +1675,18 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       // being found to have passed it once the turn is over.
       ...(args.get(maxCostFlag) === undefined
         ? {}
-        : { maxBudgetUsd: args.get(maxCostFlag) as number }),
-      permissionMode: args.get(permissionModeFlag) ?? 'bypassPermissions',
+        : { maxBudgetUsd: Math.max(0, (args.get(maxCostFlag) as number) - budget.costUsd) }),
+      permissionMode: preflight.permissionMode,
+      runId,
+      trace,
+      budget: () => ({ spentUsd: budget.costUsd, maxCostUsd: args.get(maxCostFlag), rounds: budget.rounds, maxRounds: args.get(maxRoundsFlag) }),
       hooks: { onMessage },
     });
     session = current;
 
     const turn =
       resumeFrom === undefined ? current.start() : current.resume(resumeFrom);
+    activeTurn = turn;
     // The turn may be abandoned by a stop; a rejection nobody is waiting for any
     // more must not reach the process as an unhandled one.
     turn.catch(() => undefined);
@@ -1213,7 +1702,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
 
   const argument = inputAsArgument(input);
   const prompt = (text: string): string =>
-    renderLeadPrompt(sources.runMd, text) + '\n\n' + REPORT_DIRECTIVE + '\n';
+    renderLeadPrompt(sources.runMd, text).replaceAll('$RUN_ID', runId) + '\n\n' + REPORT_DIRECTIVE + '\n';
 
   /**
    * The line the frame closes on: what the run was, in one sentence.
@@ -1251,6 +1740,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
         status: outcome.ledger,
         rounds: budget.rounds,
         costUsd: budget.costUsd,
+        ...(distributed === undefined ? {} : { distributedCostUsd: distributed.costUsd }),
         ...(sessionId === undefined ? {} : { sessionId }),
         ...(lastVerdict === undefined ? {} : { lastVerdict }),
       });
@@ -1259,10 +1749,17 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       err.write('note: the ledger was not updated\n');
       for (const line of reason.split('\n')) err.write('  ' + line + '\n');
     }
-    if (outcome.ledger !== 'complete') writeState(cwd, outcome.ledger);
+    writeState(cwd, outcome.ledger, runId);
   };
 
-  const finish = (outcome: Outcome, detail?: string): number => {
+  const finish = async (outcome: Outcome, detail?: string): Promise<number> => {
+    // An interrupt can win the race before the SDK flushes its final receipt
+    // and ownership finalizer. Keep the run open until those facts settle.
+    if (activeTurn !== undefined) {
+      try { await activeTurn; }
+      catch (error) { outcome = BLOCKED; detail = error instanceof Error ? error.message : String(error); }
+    }
+    if (await distributed?.settle('lead settled ' + outcome.ledger) === false) outcome = BLOCKED;
     finished = true;
     // Inside a frame the closing rail is what says how it went, so the progress
     // line only has to get out of the way; on its own it is the last word, and
@@ -1301,6 +1798,18 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       costUsd: budget.costUsd,
       ...(sessionId === undefined ? {} : { sessionId }),
     });
+    // Close the lead process row explicitly. This is done BEFORE finalize so
+    // that the lead's outcome is recorded specifically as 'complete'.
+    trace.closeProcess(leadTaskId, 'complete');
+    // Finalize the trace: close any open processes truthfully.
+    // N3 property 6: every exit path settles. The outcome passed to finalize is
+    // a PROCESS outcome, not a run verdict:
+    // - 'complete': the run ended normally (win, loss, blocked, budget trip, interrupted)
+    // - 'failed': an SDK fault ended the run abnormally
+    // - 'died': only used by the read side for processes left open by a kill (SIGKILL)
+    // A loss or a blocked verdict is a run that ended normally with a non-win result.
+    trace.finalize('complete');
+    trace.close();
 
     // Both files, every path: the ledger is how a run is found again, and
     // state.json is what the Stop hook the plugin ships reads. A run that ended
@@ -1331,6 +1840,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     autoResumes < autoResumeMax &&
     sessionId !== undefined &&
     !interrupted() &&
+    !['blocked', 'stopped'].includes(readState(cwd).status ?? '') &&
     stopped === undefined;
   const recover = async (why: string): Promise<SessionResult | undefined> => {
     autoResumes += 1;
@@ -1349,7 +1859,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     });
     // An instant retry asks the same overloaded servers the same question in
     // the same moment; the wait is what makes the attempt a real one.
-    if (waitMs > 0) await new Promise((settle) => setTimeout(settle, waitMs));
+    await waitForRetry(waitMs, stopWaiter);
     if (interrupted() || stopped !== undefined) return undefined;
     return drain(CONTINUE, sessionId);
   };
@@ -1357,6 +1867,9 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   try {
     // Review is a pause the loaded markdown already knows how to take: without
     // the word that skips it, the run stops once the bar is picked and waits.
+    distributed = createDistributedLead({ root: coordinatorRoot, cwd, run: runId, trace, budget, maxCostUsd: args.get(maxCostFlag), onTrip: tripped,
+      onFault: reason => { reporter.emit({ type: 'notice', level: 'error', message: 'Distributed transport: ' + reason }); void session?.interrupt(); } });
+    if (preflightTrip !== undefined) return await finish(STOPPED, preflightTrip.message);
     let result = await drain(prompt(auto ? AUTO_PREFIX + ' ' + argument : argument));
 
     // What the run says about itself, asked once and asked first: it outranks
@@ -1381,29 +1894,30 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
 
     if (interrupted()) {
       return finishedWell()
-        ? finish(WON)
-        : finish(STOPPED, 'the run was interrupted');
+        ? await finish(WON)
+        : await finish(STOPPED, 'the run was interrupted');
     }
-    if (stopped !== undefined) return finish(outcomeOf(result, finishedWell()));
+    if (stopped !== undefined) return await finish(outcomeOf(result, finishedWell()));
     if (result === undefined) {
-      return finishedWell() ? finish(WON) : finish(STOPPED, 'the run was stopped');
+      return finishedWell() ? await finish(WON) : await finish(STOPPED, 'the run was stopped');
     }
 
     if (result.status === 'error' && !finishedWell()) {
-      return finish(
+      return await finish(
         BLOCKED,
         'the run did not finish: ' +
           printable(result.error ?? 'no reason was reported'),
       );
     }
     if (result.status === 'stopped' && !finishedWell()) {
-      return finish(
+      return await finish(
         STOPPED,
         'the run was stopped: ' +
           printable(result.error ?? 'no reason was reported'),
       );
     }
-    if (result.status !== 'complete') return finish(WON);
+    if (result.status !== 'complete') return await finish(WON);
+    if (readState(cwd).status === 'blocked') return await finish(BLOCKED);
 
     flushPlan();
 
@@ -1429,9 +1943,9 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
          * the same line every other stop path gives, because the user is owed
          * the same way back in.
          */
-        return finish(STOPPED, 'the loop was not started');
+        return await finish(STOPPED, 'the loop was not started');
       }
-      if (!approved) return finish(STOPPED, 'the loop was not started');
+      if (!approved) return await finish(STOPPED, 'the loop was not started');
 
       result = await drain(GO, sessionId);
       while (
@@ -1446,14 +1960,14 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
         );
       }
       if (interrupted() && !finishedWell()) {
-        return finish(STOPPED, 'the run was interrupted');
+        return await finish(STOPPED, 'the run was interrupted');
       }
-      if (stopped !== undefined) return finish(outcomeOf(result, finishedWell()));
+      if (stopped !== undefined) return await finish(outcomeOf(result, finishedWell()));
       if (result === undefined) {
-        return finishedWell() ? finish(WON) : finish(STOPPED, 'the run was stopped');
+        return finishedWell() ? await finish(WON) : await finish(STOPPED, 'the run was stopped');
       }
       if (result.status !== 'complete' && !finishedWell()) {
-        return finish(
+        return await finish(
           result.status === 'stopped' ? STOPPED : BLOCKED,
           'the run did not finish: ' +
             printable(result.error ?? 'no reason was reported'),
@@ -1478,15 +1992,16 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       result = next;
       state = readState(cwd);
     }
-    if (state.status === 'complete') return finish(WON);
+    if (state.status === 'complete') return await finish(WON);
+    if (state.status === 'blocked') return await finish(BLOCKED);
     if (result.status === 'error') {
-      return finish(
+      return await finish(
         BLOCKED,
         'the run did not finish: ' +
           printable(result.error ?? 'no reason was reported'),
       );
     }
-    return finish(
+    return await finish(
       outcomeOf(result, false),
       'the session ended with the run unfinished (' + state.detail + ')',
     );
@@ -1510,15 +2025,33 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
      * it, and stays resumable.
      */
     if (!finished) {
+      await distributed?.settle('lead faulted');
       finished = true;
       progress.suspend();
       record(BLOCKED);
+      // Finalize the trace as 'failed' since this is an SDK fault.
+      // 'failed' is the process outcome for faults; 'died' is only for SIGKILL.
+      trace.append(
+        toRecord(
+          {
+            kind: 'error_path',
+            payload: { fault: 'exception', detail: error instanceof Error ? error.message : String(error) },
+          },
+          { runId },
+        ),
+      );
+      // Close the lead process row with 'failed' since this is an SDK fault.
+      trace.closeProcess(leadTaskId, 'failed');
+      trace.finalize('failed');
+      trace.close();
       // The frame is closed before the fault is printed under it, rather than
       // left hanging open above it.
       frame?.close(closingLine(BLOCKED));
     }
     throw error;
   } finally {
+    await distributed?.settle('lead stopped');
+    releaseControl();
     process.removeListener('SIGINT', onInterrupt);
     if (!finished) progress.fail('Run stopped');
   }

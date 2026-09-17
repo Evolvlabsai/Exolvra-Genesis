@@ -28,7 +28,7 @@ not before.
 
 1. **Pick the bar.** An artifact or a number, never an adjective: real
    screenshots of the product you're chasing, a benchmark figure, a reference
-   document. The bar is captured into `.exolvra-genesis/bar/` and stays frozen
+   document. The bar is captured into `.exolvra-genesis/runs/<run-id>/bar/` and stays frozen
    for the whole run, and your constraints become hard gates checked before
    every comparison. One warning: a visual bar needs a browser or screenshot
    tool available to critics. Without one they report BLOCKED instead of
@@ -47,9 +47,9 @@ not before.
    that survives two rounds forces a change of approach, and whole-artifact
    rounds with regression checks keep the pieces honest together.
 
-A live progress page (`.exolvra-genesis/progress.html`) shows the round log,
+A live progress page (`.exolvra-genesis/runs/<run-id>/progress.html`) shows the round log,
 per-piece status, the latest side-by-side, and verdict history while it runs,
-with per-round snapshots under `.exolvra-genesis/runs/`. The page is rendered
+with per-round snapshots under that run's directory. The page is rendered
 from a template shipped with the plugin (the lead only ever swaps out one JSON
 block), so every run on every machine gets the same card.
 
@@ -128,6 +128,14 @@ CLI loads `commands/run.md` and both agent files from the installed package
 at runtime (`EXOLVRA_GENESIS_PLUGIN_DIR` or `--plugin-dir` override the
 location), so the two cannot drift.
 
+An unattended build executes commands and therefore uses
+`--permission-mode bypassPermissions` by default; the first execution refusal
+names that flag and its remedy. `run`, `resume`, and `work` first make a bounded
+SDK permission probe (requesting a provider budget of at most $0.10 across attempts), and record the actual
+command result and spend; `plan` keeps its cautious default and skips the probe.
+An unavailable model names whether it came from `--model`, the environment, or
+your saved default, and suggests accepted model ids.
+
 Install it from npm:
 
 ```
@@ -136,7 +144,14 @@ npm install -g exolvra-genesis
 
 or build it from the repo: `cd cli && npm install && npm run build && npm link`.
 
-Nine commands:
+Start the control panel with `exolvra-genesis dashboard --open`.
+It shows operations, projects, runs, agent definitions, live events and usage,
+and can launch builds and plans or stop and resume existing runs. See the
+[control panel guide](docs/control-panel.md) for setup and controls, including
+shared access, HTTPS proxies, containers and service deployments. Shared members
+sign in with a workspace access key; deployment settings are configurable.
+
+Core commands:
 
 - `exolvra-genesis interview [spec-or-idea]` runs the same interview in the
   terminal. Each question renders in the frame, your typed answer resumes the
@@ -232,7 +247,7 @@ are off by default and nothing depends on them.
   session end while `.exolvra-genesis/state.json` still says `running`. That
   turns the win condition from a convention into a mechanism.
 - `hooks/bar-integrity-gate.example.json` is a PreToolUse hook that re-checks
-  the bar's sha256 pins (written to `.exolvra-genesis/bar/bar.sha256` at
+  the bar's sha256 pins (written to `.exolvra-genesis/runs/<run-id>/bar/bar.sha256` at
   capture) before every subagent dispatch. If the bar drifted or was tampered
   with, no builder or critic gets sent until it is restored.
 
@@ -277,12 +292,41 @@ another chat window.
 If evidence over claims is a philosophy you want more of, the full platform
 is the same idea grown up. **[Join the waitlist](https://exolvra.ai)**
 
+## Decision maps and run operations
+
+`exolvra-genesis chart "An uncertain destination"` turns unanswered design
+questions into a persistent decision map. `chart status` shows its frontier
+and remaining fog; `chart "Ticket name"` resolves one question. Human tickets
+require a live exchange. Independent research can run in parallel, and a
+cleared map hands off a spec, named goals, or ready-labeled runner issues only
+after approval. Local maps are editable markdown; GitHub mode uses native
+child issues, dependencies and assignees. See [the charting guide](docs/charting.md)
+and [the issue-runner dogfood map](.exolvra-genesis/map/MAP.md).
+
+`exolvra-genesis trace <run-id>` reads the run's events and model spend.
+Local session totals and distributed round costs retain exact provider
+receipts; nested local piece/round dollar splits are shown as unavailable.
+`status` reports active runs, `stop` requests a graceful stop, and
+`doctor --read-only` checks local execution prerequisites without contacting
+the provider. `run --coordinator <shared-directory>` opts into distributed
+rounds with isolated worker checkouts and explicit file ownership. See the
+[distributed-rounds guide](docs/distributed-rounds.md) for worker setup and the
+[run-operations guide](docs/run-operations.md) for live evidence, inactivity
+thresholds and stopping runs.
+Use each command's `--help` for its current flags.
+See [specification coverage](docs/implementation-status.md) for the implementation
+map, approved SDK adaptations, and verification boundaries.
+
 ## Credits
 
 The pattern originates with Matt Shumer's Claude-of-Duty experiment. Exolvra
 Genesis generalizes it (quality-bar rules, blind shuffled judging,
 anti-simulation gates, the two handoff contracts) while trying to keep the
 original's minimal spirit.
+
+Charting adapts Matt Pocock's MIT-licensed `wayfinder` decision-map workflow:
+precise questions become tickets, uncertainty remains fog, and humans own
+decisions that require their input.
 
 ## License
 

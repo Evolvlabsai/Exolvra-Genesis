@@ -328,6 +328,10 @@ export function parseRepo(text: string): Repo {
 
 /** One issue, in this tool's terms rather than the API's. */
 export interface Issue {
+  /** Global issue id, used by native sub-issue and blocking relationships. */
+  id?: number;
+  /** Accounts holding a chart ticket claim. */
+  assignees?: string[];
   number: number;
   title: string;
   /** As GitHub stores it: never flattened, because R3 pins a hash over it. */
@@ -1021,6 +1025,15 @@ export interface GitHubClient {
 
   listIssues(repo: Repo, query?: IssueQuery): Promise<Issue[]>;
   getIssue(repo: Repo, number: number): Promise<Issue>;
+  createIssue(repo: Repo, input: { title: string; body: string; labels: readonly string[] }): Promise<Issue>;
+  updateIssue(repo: Repo, number: number, edit: { title?: string; body?: string; state?: 'open' | 'closed' }): Promise<Issue>;
+  addAssignees(repo: Repo, number: number, assignees: readonly string[]): Promise<Issue>;
+  removeAssignees(repo: Repo, number: number, assignees: readonly string[]): Promise<Issue>;
+  listSubIssues(repo: Repo, number: number): Promise<Issue[]>;
+  addSubIssue(repo: Repo, number: number, childId: number): Promise<void>;
+  listBlockedBy(repo: Repo, number: number): Promise<Issue[]>;
+  addBlockedBy(repo: Repo, number: number, blockerId: number): Promise<void>;
+  removeBlockedBy(repo: Repo, number: number, blockerId: number): Promise<void>;
   listIssueComments(repo: Repo, number: number): Promise<IssueComment[]>;
   /** An issue and its comments: what R3 snapshots and pins. */
   getIssueThread(repo: Repo, number: number): Promise<IssueThread>;
@@ -1564,6 +1577,8 @@ export function createGitHubClient(options: GitHubClientOptions = {}): GitHubCli
     if (object === undefined || number === undefined) throw malformed(operation, 'issue number');
     return {
       number,
+      ...(num(object['id']) === undefined ? {} : { id: num(object['id'])! }),
+      ...(asArray(object['assignees']) === undefined ? {} : { assignees: asArray(object['assignees'])!.map(loginOf) }),
       title: str(object['title']) ?? '',
       body: str(object['body']) ?? '',
       state: str(object['state']) ?? '',
@@ -1856,6 +1871,76 @@ export function createGitHubClient(options: GitHubClientOptions = {}): GitHubCli
         path: issuePath(repo, number),
       });
       return toIssue(reply.json, operation);
+    },
+
+    async createIssue(repo, input): Promise<Issue> {
+      const operation = 'create an issue in ' + repoSlug(repo);
+      requireText(input.title, operation, 'title');
+      requireText(input.body, operation, 'body');
+      for (const label of input.labels) requireText(label, operation, 'label');
+      const reply = await request({ operation, method: 'POST', path: repoPath(repo, '/issues'), body: { title: input.title, body: input.body, labels: [...input.labels] } });
+      return toIssue(reply.json, operation);
+    },
+
+    async updateIssue(repo, number, edit): Promise<Issue> {
+      const operation = 'update issue #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number');
+      if (edit.title === undefined && edit.body === undefined && edit.state === undefined) refuse(operation, 'no edit was supplied');
+      if (edit.title !== undefined) requireText(edit.title, operation, 'title');
+      if (edit.state !== undefined && edit.state !== 'open' && edit.state !== 'closed') refuse(operation, 'invalid issue state');
+      const body = { ...(edit.title === undefined ? {} : { title: edit.title }), ...(edit.body === undefined ? {} : { body: edit.body }), ...(edit.state === undefined ? {} : { state: edit.state }) };
+      const reply = await request({ operation, method: 'PATCH', path: issuePath(repo, number), body });
+      return toIssue(reply.json, operation);
+    },
+
+    async addAssignees(repo, number, assignees): Promise<Issue> {
+      const operation = 'claim issue #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number');
+      if (!assignees.length) refuse(operation, 'no assignees were supplied');
+      for (const login of assignees) if (!readLogin(login)) refuse(operation, 'invalid assignee login');
+      const reply = await request({ operation, method: 'POST', path: issuePath(repo, number, '/assignees'), body: { assignees: [...assignees] } });
+      return toIssue(reply.json, operation);
+    },
+
+    async removeAssignees(repo, number, assignees): Promise<Issue> {
+      const operation = 'release issue #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number');
+      if (!assignees.length) refuse(operation, 'no assignees were supplied');
+      for (const login of assignees) if (!readLogin(login)) refuse(operation, 'invalid assignee login');
+      const reply = await request({ operation, method: 'DELETE', path: issuePath(repo, number, '/assignees'), body: { assignees: [...assignees] } });
+      return toIssue(reply.json, operation);
+    },
+
+    async listSubIssues(repo, number): Promise<Issue[]> {
+      const operation = 'list child issues of #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number');
+      const items = await paginate({ operation, method: 'GET', path: issuePath(repo, number, '/sub_issues'), query: { per_page: PAGE_SIZE } });
+      return items.map((item) => toIssue(item, operation));
+    },
+
+    async addSubIssue(repo, number, childId): Promise<void> {
+      const operation = 'attach a child issue to #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number'); requireNumber(childId, operation, 'child issue id');
+      await request({ operation, method: 'POST', path: issuePath(repo, number, '/sub_issues'), body: { sub_issue_id: childId } });
+    },
+
+    async listBlockedBy(repo, number): Promise<Issue[]> {
+      const operation = 'list blockers of #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number');
+      const items = await paginate({ operation, method: 'GET', path: issuePath(repo, number, '/dependencies/blocked_by'), query: { per_page: PAGE_SIZE } });
+      return items.map((item) => toIssue(item, operation));
+    },
+
+    async addBlockedBy(repo, number, blockerId): Promise<void> {
+      const operation = 'add a blocker to #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number'); requireNumber(blockerId, operation, 'blocker issue id');
+      await request({ operation, method: 'POST', path: issuePath(repo, number, '/dependencies/blocked_by'), body: { issue_id: blockerId } });
+    },
+
+    async removeBlockedBy(repo, number, blockerId): Promise<void> {
+      const operation = 'remove a blocker from #' + number + ' in ' + repoSlug(repo);
+      requireNumber(number, operation, 'issue number'); requireNumber(blockerId, operation, 'blocker issue id');
+      await request({ operation, method: 'DELETE', path: issuePath(repo, number, '/dependencies/blocked_by/' + blockerId) });
     },
 
     async listIssueComments(repo: Repo, number: number): Promise<IssueComment[]> {

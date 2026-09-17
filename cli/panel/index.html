@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#080a0c">
+  <title>Genesis · Control panel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310251c'/%3E%3Cpath d='M24 10a10 10 0 1 0 0 12v-7h-9v4h5v2a6 6 0 1 1 0-9z' fill='%2365c18c'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body class="auth-pending">
+  <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+    <button class="icon-button theme-toggle auth-theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" title="Switch to light mode"></button>
+    <div class="auth-wrap">
+      <div class="brand auth-brand"><span class="brand-mark" aria-hidden="true">G<span></span></span><span>GENESIS<small>exolvra genesis</small></span></div>
+      <div class="auth-card">
+        <div class="eyebrow">SERVER CONNECTION</div>
+        <h1 id="auth-title">Connecting to Genesis</h1>
+        <p class="auth-description" id="auth-description">Reading this server’s workspace settings.</p>
+        <div class="auth-loading" id="auth-loading"><span class="loading-ring" aria-label="Connecting"></span></div>
+        <div class="form-error" id="auth-error" role="alert" hidden></div>
+        <form id="login-form" hidden>
+          <div class="field"><label for="access-key">Workspace access key</label><input type="password" id="access-key" name="token" required autocomplete="current-password" placeholder="Enter your access key" spellcheck="false" autocapitalize="off"><small>Use the access key provided by the server operator.</small></div>
+          <button class="button primary auth-submit" id="login-submit" type="submit">Connect to workspace <span aria-hidden="true">→</span></button>
+        </form>
+        <button class="button auth-retry" type="button" id="auth-retry" hidden>Retry server connection</button>
+      </div>
+      <p class="auth-caption">One workspace. Shared visibility. Evidence you can inspect.</p>
+    </div>
+  </section>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="#operations" aria-label="Genesis operations"><span class="brand-mark" aria-hidden="true">G<span></span></span><span>GENESIS<small>exolvra genesis</small></span></a>
+    <div class="workspace"><span class="workspace-avatar" id="workspace-avatar">L</span><div><span id="workspace-name">Workspace</span><small>CONTROL PLANE</small></div><span class="workspace-dot" aria-hidden="true"></span></div>
+    <p class="nav-label">WORKSPACE</p>
+    <nav id="navigation"></nav>
+    <div class="sidebar-bottom"><div class="local-note"><span class="status-dot"></span><span id="workspace-connection">Server connection</span><small id="workspace-description">Projects on this server.</small></div><button class="sidebar-link logout-button" id="logout" hidden>Sign out <span aria-hidden="true">↗</span></button><a class="sidebar-link" href="https://github.com/Evolvlabsai/Exolvra-Genesis" target="_blank" rel="noreferrer">Documentation <span aria-hidden="true">↗</span></a><div class="sidebar-version"><span>EXOLVRA GENESIS</span><span id="version">—</span></div></div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar"><button class="icon-button menu-toggle" id="menu-toggle" aria-label="Toggle navigation" aria-expanded="false"></button><div class="breadcrumb"><span class="breadcrumb-root">Workspace</span><span class="slash">/</span><span id="breadcrumb">Operations</span></div><div class="topbar-right"><span class="connection" id="connection"><span class="status-dot"></span> Connecting</span><span class="topbar-divider"></span><button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" title="Switch to light mode"></button><span class="local-pill" id="workspace-mode">LOCAL</span><span class="operator-avatar" id="operator-avatar" title="Local operator">L</span></div></header>
+    <div class="error-banner" id="error-banner" role="status" hidden><span id="error-message"></span><button class="text-button" id="retry">Retry connection</button></div>
+    <main id="main" tabindex="-1"><div class="loading-state"><span class="loading-ring"></span><h1>Connecting to your workspace</h1><p>Reading local projects and run evidence.</p></div></main>
+    <footer class="page-footer"><span><span class="status-dot small"></span> Evidence from server run records</span><span id="updated-at">Waiting for first observation</span></footer>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
+  <div class="toast-region" id="toasts" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

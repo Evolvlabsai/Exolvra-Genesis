@@ -278,7 +278,7 @@ function listed(items: readonly string[]): string {
  * is exit 2 naming the gate, because whether new words are weaker is a
  * judgement, and a judgement about gates is the lead's rather than this CLI's.
  */
-function assertStandingGatesKept(
+export function assertStandingGatesKept(
   input: ResolvedInput,
   cwd: string,
   usage?: string,

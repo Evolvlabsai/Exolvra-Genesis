@@ -1,0 +1,8 @@
+# Replace the hostname with the exact --public-url hostname in the service.
+# Point DNS here and allow ports 80/443 for Caddy's automatic HTTPS.
+# Merge this site into the existing Caddyfile; keep other sites intact.
+genesis.example.com {
+    # HTTP backend on loopback. Caddy preserves the browser's Host by default;
+    # Genesis uses it to validate the configured public origin.
+    reverse_proxy 127.0.0.1:4317
+}

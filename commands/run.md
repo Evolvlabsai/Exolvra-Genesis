@@ -72,10 +72,10 @@ Rules for a good bar:
 - It is hard but plausibly beatable in this run. If the comp is a giant, name
   the specific slice we're matching, not the whole company.
 
-Capture the bar locally into `.exolvra-genesis/bar/` (screenshots, files, numbers) so
-every critic can load it, and pin it twice: write `.exolvra-genesis/bar/BAR.md` listing
+Capture the bar locally into `.exolvra-genesis/runs/$RUN_ID/bar/` (screenshots, files, numbers) so
+every critic can load it, and pin it twice: write `.exolvra-genesis/runs/$RUN_ID/bar/BAR.md` listing
 every artifact with its sha256, and the same pins in machine-checkable form as
-`.exolvra-genesis/bar/bar.sha256` (`sha256sum` format, paths relative to `bar/`).
+`.exolvra-genesis/runs/$RUN_ID/bar/bar.sha256` (`sha256sum` format, paths relative to `bar/`).
 The bar is immutable for the rest of the run — re-verify those hashes before
 every judging round.
 
@@ -102,10 +102,40 @@ some piece. For each piece, write a Task Spec:
 - **Files owned** — disjoint from every other piece running in parallel.
 - **Verification command** — the exact command whose output proves the
   criteria.
-- **Bar** — the path(s) under `.exolvra-genesis/bar/` the critic will compare
+- **Bar** — the path(s) under `.exolvra-genesis/runs/$RUN_ID/bar/` the critic will compare
   against, plus any hard constraint gates.
 
-Write `.exolvra-genesis/state.json` containing `{"status": "running"}`. Then STOP and
+For CLI dispatch, include a fenced `genesis-task` metadata block in every builder
+prompt, copied from this Task Spec: `{"piece":"P1","round":1,"files":["src/piece/**"],
+"verify":"npm test"}`. Optional `scratch` names dedicated relative directories.
+Set `round` to the piece's current round and retain it during report corrections;
+the trace leaves round attribution unavailable for older prompts without it.
+Before the first builder dispatch, write an array of all pieces' metadata to
+`.exolvra-genesis/runs/$RUN_ID/ownership-plan.json`. The CLI validates every pair
+for overlap before allowing any builder, then keeps the plan in memory. Later
+dispatches must match the declared ownership, scratch directories and verification.
+The CLI validates the ownership list before dispatch and snapshots actual bytes,
+including ignored files; a single wildcard never crosses a directory separator.
+The shared working tree admits one guarded builder at a time. Disjoint work may
+run concurrently only in isolated trees. Reject overlapping ownership before any
+builder starts. Never permit a builder to amend its ownership through its report.
+Include a fenced `genesis-critic` block in each critic dispatch with identity only:
+`{"piece":"P1","round":1}`. Preserve that round number during report corrections.
+The CLI combines that round's findings across critics, fingerprints normalized
+finding text and cited criteria, and records the candidate content identity beside
+them. A duplicate over unchanged content suppresses another builder dispatch;
+`gap-survives` and `see-saw` signals require the lead to apply the rules below.
+Two successive see-saw signals from the same builder poison its context and cause
+the next dispatch to start cold. These signals never manufacture a verdict.
+
+At planning time, name every piece that implements a concurrent or adversarial
+protocol. Its acceptance criteria include a valid TLA+ model, a matching exhaustive
+explorer test, named invariants, explicit bounds, and a green run printing the state
+count. Both artifacts ship together. The test-land explorer needs only Node and
+the existing TypeScript toolchain; Java and TLC are never prerequisites. Include
+attacker actions and a deliberately broken variant that demonstrates a violation.
+
+Write `.exolvra-genesis/state.json` containing `{"status": "running", "run": "$RUN_ID"}`. Then STOP and
 show the user: the bar in one sentence, one sentence on exactly how a critic
 will compare the work against it, the merged gate list with every line marked
 inherited or run-level, and the piece list (with requirement coverage when
@@ -131,9 +161,29 @@ On "go", for each piece:
    prior rounds — to a fresh `exolvra-genesis-critic` subagent, working from a
    temporary directory containing copies, never inside the repo. Shuffle the
    A/B labels whenever the medium allows.
-4. On LOSS, send the critic's findings — batched and ranked, not one at a
-   time — back to a builder for another round, with a fresh critic every
-   round. One finding per round costs a round per finding.
+4. On LOSS, send all ranked findings back to the same builder while its session
+   serves. Send only the findings batch and what changed since its previous turn;
+   keep the full Task Spec on disk for recovery. Start cold if the session died,
+   its model changed, or its context is poisoned: an ownership breach or two
+   consecutive reintroductions of a fixed defect. Record continuation versus cold
+   start, model, rounds served, and the reason in the round log. Critics always
+   start fresh; they never enter the builder map. If platform resumption is
+   unavailable, say so and supply the complete brief to the new builder.
+
+Before spending a judging round, check the report against disk: paths must exist
+or be recorded deletions, FILES CHANGED must match the observed touched-set, the
+verification command must match the Task Spec exactly, and nonempty verbatim output
+must agree with the claimed result. Reject contradictory critic verdicts too:
+WIN cannot list an unmet gate, LOSS needs a finding, and BLOCKED must name a missing
+perception capability. Return named violations to the producer in the same round,
+with at most three correction attempts. Exhaustion fails that round. A consistency
+pass attests only the checks performed and is never evidence of quality.
+
+An ownership breach aborts the round after repair. List all offending paths,
+preserve already-dirty operator files, and explicitly identify anything repair
+could not restore. Start the next builder cold. On the plugin, perform these same
+lead checks; the optional ownership hook provides weaker protection because its
+snapshot is a file in the target checkout. Record every check in the round log.
 
 Loop rules:
 
@@ -151,7 +201,7 @@ Loop rules:
   integration.
 - After every round, re-verify the pins: the spec's sha256, the standards
   file's sha256 when the repo has one, every hash in
-  `.exolvra-genesis/bar/BAR.md`, and that the repo is identical before and after
+  `.exolvra-genesis/runs/$RUN_ID/bar/BAR.md`, and that the repo is identical before and after
   each critic session. Publish these attestations in the progress page's
   `integrity` lines. A failed check is an automatic BLOCKED — stop and tell
   the user.
@@ -160,7 +210,7 @@ Loop rules:
   early only when everything is blocked.
 
 Progress page: at run start, copy the plugin's template from
-`${CLAUDE_PLUGIN_ROOT}/templates/progress.html` to `.exolvra-genesis/progress.html`
+`${CLAUDE_PLUGIN_ROOT}/templates/progress.html` to `.exolvra-genesis/runs/$RUN_ID/progress.html`
 (if the template can't be found, generate a page with the same sections), and
 fill its JSON with the goal, bar, merged gates and where each one came from,
 mode, and piece list as soon as Step 2 completes. From then on, update it
@@ -170,13 +220,55 @@ appear exactly once each. Match those markers and nothing else — a pattern
 written against the data tag also matches the template's own description of
 it, and swallows the page. Never touch the markup, styles, or renderer, so
 the page looks identical for every run and every user of the plugin. Save a
-snapshot each round under `.exolvra-genesis/runs/`.
+snapshot each round under `.exolvra-genesis/runs/$RUN_ID/snapshots/`.
+
+## Distributed-round transport
+
+This section applies only when runtime metadata names a coordinator. Keep this
+same loop, Task Spec, ownership gate, Report, blind comparison, and win condition.
+Use the worker transport for builder and critic rounds instead of local Task
+dispatch. A lead remains a lead; the transport never decides quality.
+
+For each builder dispatch, write a JSON request under this run's tasks directory:
+`run`, `piece`, `round`, `task` (the entire existing Task Spec), `files` (the owned
+paths), `verify` (the exact verification command), `bar` (the captured bar text),
+`barDirectory` (the actual captured bar assets directory), `requirements`
+(perception such as `browser` or `platform:linux`), and `model` (an exact supported
+model id or `inherit`). Include independent `criticModel` and
+`criticRequirements` when judging needs different capabilities. Include
+`maxBudgetUsd` bounded by the run's remaining budget when a budget is set.
+The coordinator also caps each dispatch and reserves active worker budgets.
+Do not put logins, credentials, or coordinator tokens in this request.
+
+Invoke `exolvra-genesis round --coordinator <directory> --action build --request
+<request-file> -C <project>`. Its successful JSON result includes the builder job
+id, BUILT SHA, Report, changed files, verbatim independently rerun verification,
+and `cwd` of the received pinned tree. Check and integrate only those owned files
+from that tree, including deletions; reverify the assembled project as usual.
+Do not treat a timeout, missing capability, hash mismatch, ownership breach, or
+failed verification as a successful round. Record its stated fault and state.
+
+Then invoke `exolvra-genesis round --coordinator <directory> --action judge --job
+<builder-job-id> -C <project>`. The transport refuses an unverified sha and chooses
+a different physical machine; same-machine fallback exists only in a fleet that
+has registered one machine. The fresh critic receives only this run's captured
+bar and pinned tree, never the builder's Task Spec, Report, reasoning, or history.
+Apply its verdict and batched findings through the same loop above. A nonzero
+judge exit for LOSS or BLOCKED is its real verdict, not a transport success.
+
+Missing capabilities name the blocking model, platform, browser, or independent
+machine. Do not silently fall back to local judgment. Worker progress and spend
+are recorded in the run trace; the same fleet template lists workers. On every
+settlement, the CLI revokes outstanding worker claims before cleaning the run's
+bundles. In plugin-only operation explicitly run `round --action cleanup --run
+$RUN_ID --coordinator <directory>` once all round commands have settled. Delete
+retained verification checkouts after integrating their owned files.
 
 ## Win condition
 
 The run ends when the assembled output wins the blind comparison twice in a
 row against fresh critics, or the user stops it. Update
-`.exolvra-genesis/state.json` to `{"status": "complete"}` (or `{"status":
-"stopped"}`), then report the final verdicts, the evidence behind them, and
+`.exolvra-genesis/state.json` to `{"status": "complete", "run": "$RUN_ID"}` (or `{"status":
+"stopped", "run": "$RUN_ID"}`), then report the final verdicts, the evidence behind them, and
 where the work lives. When running from a spec, the report also maps every
 requirement to the evidence that satisfies it.

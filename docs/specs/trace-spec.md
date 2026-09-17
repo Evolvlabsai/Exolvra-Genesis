@@ -56,6 +56,17 @@ killable. Files stay the record; the db is a disposable mirror.
 - **R5** Token/cost totals per round and per piece, accumulated across retries
   (a retried round paid for every attempt — record what was spent, not what
   the last attempt cost).
+  **Accepted implementation decision, 2026-09-17:** the owner explicitly
+  approved exact provider-reported local session totals with unavailable
+  nested piece/round dollar splits. Claude Agent SDK 0.1.77 reports local
+  parent-session spend without reliable dollar attribution to nested agent
+  rounds. Persist that spend with `attribution: session` and null piece/round;
+  show unattributable piece/round dollars as unavailable, never zero, an
+  estimate, or a duplicate of the session total. Token counts retain the
+  provider's reported scope. Distributed rounds use separate SDK queries
+  whose reported spend can be attributed to their specific piece and round,
+  with `attribution: round`. Accumulate the actual receipts from retries in
+  either mode without charging the same receipt twice.
 - **R6** The tracer's failure never fails a run: if the trace store cannot be
   written, the run warns once and continues. Observability must not become a
   new way to lose work.

@@ -2,6 +2,7 @@
 /.exolvra-genesis/*
 !/.exolvra-genesis/standards.md
 !/.exolvra-genesis/goals/
+!/.exolvra-genesis/map/
 
 # Run state written under the previous name, which existing checkouts still have
 .gauntlet/

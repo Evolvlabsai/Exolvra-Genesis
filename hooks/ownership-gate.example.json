@@ -1,0 +1,8 @@
+{
+  "_comment": "OPT-IN; requires the exolvra-genesis CLI on PATH. The CLI loop has stronger in-memory enforcement. These plugin hooks persist only hashes, modes, and dirty-path metadata, never secret file contents; a builder with write access can tamper with this disk snapshot. PreToolUse snapshots builders, PostToolUse checks immediately, Stop catches an unfinished dispatch. Use run-scoped state.json and genesis-task metadata as documented in commands/run.md.",
+  "hooks": {
+    "PreToolUse": [{ "matcher": "Task|Agent", "hooks": [{ "type": "command", "command": "exolvra-genesis gate --phase before" }] }],
+    "PostToolUse": [{ "matcher": "Task|Agent", "hooks": [{ "type": "command", "command": "exolvra-genesis gate --phase after" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "exolvra-genesis gate --phase after" }] }]
+  }
+}

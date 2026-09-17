@@ -11,6 +11,13 @@ subagents.
 
 $ARGUMENTS
 
+When a proposed specification involves claims, locks, recovery, concurrent actors,
+or attackers, include protocol modeling in its acceptance criteria: a TLA+ model,
+an exhaustive TypeScript explorer run under the existing Node test suite, the same
+named invariants in both, declared state-space bounds, and a counterexample from a
+deliberately broken variant. A model without its exhaustive check is unfinished.
+No Java or additional runtime dependency is required.
+
 ## Mode
 
 If the input is a path to an existing spec, this is a modification pass: read

@@ -48,6 +48,19 @@ only to migrate the legacy layout and to catch strays — not as the design.
 
 ## Requirements
 
+Implementation ordering, 2026-09-17: the owner-approved First Contact probe is
+the sole model call permitted before archival. Read-only unfinished-run and
+malformed-state checks precede even that probe; it can execute only the nonce
+no-op and cannot start building. Archival and the new run pointer precede the
+lead session. This preserves First Contact's zero-artifact refusal and keeps
+the build lead from inheriting a previous run's files.
+
+Issue-runner settlement: a blocked historical issue verdict remains blocked
+in the ledger. After the outer runner observes its actual remote lifecycle
+label and records a matching settlement receipt, the checkout is released for
+the next issue. A running run, an ordinary blocked run, or an issue with no
+positive settlement receipt still refuses a fresh start.
+
 - **R1** The reported failure, reproduced as a fixture and pinned: a state
   dir carrying a settled run's full leftovers at legacy root paths; a new
   `run` starts; assert the sweep archived them before the session spawned,

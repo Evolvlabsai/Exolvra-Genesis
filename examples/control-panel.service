@@ -1,0 +1,32 @@
+# Install as /etc/systemd/system/control-panel.service after editing the paths
+# and public URL. See ../docs/control-panel.md for setup and shutdown behavior.
+[Unit]
+Description=Genesis shared control panel
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=genesis
+Group=genesis
+WorkingDirectory=/srv/genesis/workspace
+Environment=HOME=/var/lib/genesis
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Root-owned, mode 0600. Required: EXOLVRA_GENESIS_PANEL_TOKEN (random, >=24 chars).
+# Include Claude/provider authentication and project tool settings as needed.
+EnvironmentFile=/etc/genesis/panel.env
+# Example npm --prefix /opt/genesis installation. Replace the node/package paths
+# with the actual installed locations; systemd does not load shell profiles.
+ExecStart=/usr/bin/node /opt/genesis/node_modules/exolvra-genesis/dist/cli.js dashboard -C /srv/genesis/workspace --host 127.0.0.1 --port 4317 --public-url https://genesis.example.com
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+# Let the dashboard coordinate command shutdown and final billing. Never kill
+# pending children automatically; they must settle before systemd can restart.
+KillSignal=SIGTERM
+KillMode=mixed
+SendSIGKILL=no
+TimeoutStopSec=60s
+
+[Install]
+WantedBy=multi-user.target

@@ -100,8 +100,14 @@ export interface FleetData {
   /** The allowlist the pass ran against, as `owner/name`. */
   repos: readonly string[];
   runs: readonly FleetRun[];
+  workers?: readonly FleetWorker[];
   /** One line under the table. */
   note?: string | undefined;
+}
+
+export interface FleetWorker {
+  name: string; machine: string; capabilities: readonly string[];
+  live: boolean; seen: number; current: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -247,6 +253,10 @@ function encode(data: FleetData): string {
     repos: data.repos.map((repo) => field(repo, 120)).filter((repo) => repo !== ''),
     ...(data.note === undefined ? {} : { note: field(data.note, 300) }),
     runs: data.runs.map(normalizeRun),
+    ...(data.workers === undefined ? {} : { workers: data.workers.map(w => ({
+      name: field(w.name), machine: field(w.machine), capabilities: w.capabilities.map(c => field(c)),
+      live: w.live === true, seen: count(w.seen), current: optional(w.current, 160),
+    })) }),
   };
   return JSON.stringify(payload, null, 2).replace(/</g, '\\u003c');
 }

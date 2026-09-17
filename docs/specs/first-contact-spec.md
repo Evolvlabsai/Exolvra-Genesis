@@ -93,3 +93,26 @@ The three original failures, replayed as fixtures: the museum-free stale-404
 session denies execution — must refuse before any bar capture, asserted by
 zero files written and zero model spend), and a TTY run answering the C4
 question both ways. Each must land in the exact house shape, byte-asserted.
+
+
+## Implementation amendment, 2026-09-17
+
+The owner approved: "Allow a small model-backed permission probe before the
+build." This supersedes C2's no-model-token restriction and R1's before-any-spend
+wording. The installed Claude Agent SDK 0.1.77 has no public execute-tool control
+request: `Query` and the control protocol expose session configuration and MCP
+management, but no zero-token Bash execution. A local shell command would not
+exercise SDK session permissions.
+
+The implementation therefore runs a separate, bounded SDK query before the lead
+build, under the effective model, environment, project settings and permission
+mode. It exposes only Bash and a hook restricts execution to one exact harmless
+command. A matching tool result containing a fresh marker is required; model
+prose or configuration alone never passes. Across a possible one-time TTY bypass
+retry, the requested provider budget totals at most $0.10 (or the smaller remaining
+run budget). Actual cost and token usage are returned for budget accounting and
+recorded with mode, capability and outcome. A stopped or inconclusive probe
+refuses the build. Headless failures never prompt. `plan` has no probe.
+
+The hard gate's zero-model-spend assertion now means zero **build** spend before
+permission is demonstrated; bounded probe spend is expected and must be visible.

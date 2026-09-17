@@ -1,3 +1,4 @@
+import { PREFLIGHT_FAKE } from './preflight-fake.js';
 import assert from 'node:assert/strict';
 import {
   mkdirSync,
@@ -54,6 +55,7 @@ import { dirname, join } from 'node:path';
 let phaseIndex = 0;
 
 export function query({ prompt, options }) {
+${PREFLIGHT_FAKE}
   const plan = JSON.parse(readFileSync(process.env.EXOLVRA_GENESIS_RUN_FAKE, 'utf8'));
   const phase = plan.phases[Math.min(phaseIndex, plan.phases.length - 1)];
   phaseIndex += 1;
@@ -964,7 +966,7 @@ test('the progress page path prints at the start of every run', () => {
   const result = runRun(['run', '--auto', '--json', 'a goal'], { phases: WINNING_RUN });
   const notices = ndjson(result.stdout).filter((event) => event.type === 'notice');
   assert.ok(
-    notices.some((notice) => notice.message === '.exolvra-genesis/progress.html'),
+    notices.some((notice) => /^\.exolvra-genesis\/runs\/r-[^/]+\/progress\.html$/.test(notice.message)),
     'the progress page was never named:\n' + result.stdout,
   );
 });
@@ -978,7 +980,7 @@ test('the progress page is named in full once --directory points elsewhere', () 
   const notices = ndjson(result.stdout).filter((event) => event.type === 'notice');
   assert.ok(
     notices.some(
-      (notice) => notice.message === join(elsewhere, '.exolvra-genesis', 'progress.html'),
+      (notice) => notice.message === join(elsewhere, '.exolvra-genesis', 'runs', JSON.parse(readFileSync(join(elsewhere, '.exolvra-genesis', 'runs.json'), 'utf8'))[0].id, 'progress.html'),
     ),
     'a redirected run must name the page it really writes:\n' + result.stdout,
   );
@@ -1041,6 +1043,15 @@ const HOOK_SHAPE = /"status": *"(running|complete|stopped|blocked)"/;
 
 /** Every ending a run has, driven as a real process. */
 const ENDINGS = [
+  {
+    label: 'a lead that explicitly declared the run blocked',
+    args: ['run', '--auto', '--json', 'a goal'],
+    phases: [{ messages: [OPENING, round('P1', 1, 'BLOCKED', 'missing perception')], state: 'blocked', result: { costUsd: 0.1 } }],
+    code: 1,
+    status: 'blocked',
+    ledger: 'blocked',
+    state: 'blocked',
+  },
   {
     label: 'a run that met its win condition',
     args: ['run', '--auto', '--json', 'a goal'],
@@ -1380,6 +1391,21 @@ test('R6: a resumed run that did not finish stays resumable', () => {
   assert.equal(again.runs()[0].lastVerdict, 'WIN');
 });
 
+test('resume preserves a declared blocked verdict after a successful SDK turn', () => {
+  const cwd = workspace();
+  const seeded = seedLedger(cwd);
+  const result = runRun(['resume', seeded.id, '--json'], {
+    cwd,
+    phases: [{ messages: [round('P2', 2, 'BLOCKED', 'missing perception')], state: 'blocked', result: { costUsd: 0.25 } }],
+  });
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  assert.equal(result.sent().length, 1, 'a deliberate verdict must not retry');
+  assert.equal(ndjson(result.stdout).at(-1).status, 'blocked');
+  assert.equal(result.runs()[0].status, 'blocked');
+  assert.equal(result.runs()[0].lastVerdict, 'BLOCKED');
+  assert.equal(result.state().status, 'blocked');
+});
+
 test('R6: `runs` never shows a complete run with a losing verdict', () => {
   const cwd = workspace();
   const seeded = seedLedger(cwd, { rounds: 1, lastVerdict: 'LOSS' });
@@ -1398,13 +1424,15 @@ test('R6: `runs` never shows a complete run with a losing verdict', () => {
   assert.equal(listed.code, 0, listed.stderr);
   for (const line of listed.stdout.split('\n').filter((line) => line !== '')) {
     const fields = line.split('\t');
+    // Fields: id, started, input, status, verdict, live (6 total)
     assert.equal(
       fields[3] === 'complete' && fields[4] === 'LOSS',
       false,
       'the ledger says a run both finished and lost: ' + line,
     );
   }
-  assert.match(listed.stdout, /\tstopped\tLOSS$/m, listed.stdout);
+  // stopped status, LOSS verdict, and `-` for live because the run settled.
+  assert.match(listed.stdout, /\tstopped\tLOSS\t-$/m, listed.stdout);
 });
 
 test('resume --json is the same stream a run writes', () => {
@@ -1645,7 +1673,7 @@ test('a value survives the ledger and every human view byte for byte', () => {
   const redirected = runRun(['run', '--auto', '--json', '-C', elsewhere, 'a goal'], {
     phases: WINNING_RUN,
   });
-  const page = join(elsewhere, '.exolvra-genesis', 'progress.html');
+  const page = join(elsewhere, '.exolvra-genesis', 'runs', JSON.parse(readFileSync(join(elsewhere, '.exolvra-genesis', 'runs.json'), 'utf8'))[0].id, 'progress.html');
   assert.ok(
     ndjson(redirected.stdout).some(
       (event) => event.type === 'notice' && event.message === page,

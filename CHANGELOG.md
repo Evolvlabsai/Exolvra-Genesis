@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.10.0 — 2026-09-17
+
+- `dashboard` serves a Genesis control panel with operations, run history,
+  live event streams, project registration, agent definitions, measured usage,
+  and command output. Start builds, preview plans, research local decision maps,
+  and stop or resume runs through the existing CLI. The dark, compact interface
+  supports filters, event pagination, artifact downloads and JSON exports.
+- The panel supports local use and authenticated team access with configurable
+  listen addresses and a public HTTPS origin. Shared-key login creates bounded
+  HttpOnly browser sessions with CSRF protection and independent logout.
+  Portable Node, container, proxy and service deployment examples are included.
+  The panel persists project registrations and command receipts. It adds no runtime
+  dependencies and preserves exact reported session totals without estimating
+  unavailable nested agent costs.
+
+## 0.9.0 — 2026-09-17
+
+- Decision charting ships in plugin markdown and the CLI. Editable local maps
+  and GitHub-native maps share one ticket contract, with guarded claims,
+  authenticated GitHub heartbeats and recovery of expired own-account claims,
+  native child/blocking relationships, live human exchanges, and independent
+  read-only research sessions. Prototype tickets produce runnable HTML within
+  the map and require confirmed human use and feedback before closure.
+  Spec, named-goal and ready-issue handoffs are
+  validated against repository standards and shown for approval. Charting
+  never silently edits standards or .gitignore. The first issue-runner
+  dogfood map records source-backed findings and leaves live rollout choices
+  explicitly undecided.
+- Run artifacts are isolated under `.exolvra-genesis/runs/<run-id>/`; startup,
+  interruption, recovery and completion settle state and the ledger together.
+  Builders retain bounded session context by piece while critics start fresh.
+  File-ownership checks compare real filesystem changes, preserve pre-existing
+  user edits, and prevent successful reports after an ownership breach.
+  Conservative report/verdict checks surface contradictions and repeated gaps.
+- Trace records now support live activity, process liveness and observed model
+  spend. `status`, `status --watch`, `stop`, and the existing progress page use
+  that evidence, label stale or unavailable data, and expose budget caps and
+  stalls, with configurable thresholds by phase and warnings at 80% of cost
+  or round caps. Local session costs and distributed round costs use exact
+  provider receipts; nested local piece/round dollar splits are unavailable,
+  as explicitly accepted for SDK 0.1.77 in trace requirement R5.
+  Graceful stopping verifies the settled state; forced stopping names
+  unresolved aftermath. `doctor --read-only` checks local prerequisites without
+  a provider call, command execution, or filesystem changes, and marks runtime
+  permission and authentication as unverified.
+- Builds perform a bounded SDK execution preflight through the same effective
+  model, environment, project settings and permission mode. A matching actual
+  Bash tool result is required; model prose is not permission evidence. The
+  SDK has no public zero-token execution endpoint, so the approved probe uses
+  a provider budget of at most $0.10, or the smaller remaining run cap. Its
+  reported spend and tokens count toward the run. A terminal can approve one
+  ephemeral permission retry; headless refusal exits 2. Unsupported model
+  failures name the requested model and configuration source.
+- Distributed rounds are optional: `run` and `resume` accept `--coordinator`
+  or `EXOLVRA_GENESIS_COORDINATOR`, and `work` inherits the environment setting.
+  Worker daemons poll authenticated shared storage using local model
+  credentials. Parentless Git bundles carry pinned trees; the lead verifies
+  builder output before blind judging on an independent machine. Capability
+  checks, fenced claims, heartbeats, bounded reclaim, budgets, cancellation,
+  and worker fleet rows use the existing contracts and templates. Existing
+  local runs require no coordinator or additional runtime dependency.
+- Protocol models and bounded state exploration cover issue claims and
+  distributed round ownership. Regression coverage exercises real local Git,
+  competing processes, native HTTP tracker operations, terminal approval, and
+  package installation; only the external SDK and GitHub service are substituted.
+
 ## 0.8.3 — 2026-08-19
 
 - A torn provider stream is a recoverable fault, not a crash. The Agent SDK

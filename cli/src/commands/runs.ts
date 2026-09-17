@@ -17,6 +17,11 @@ import {
   runsPath,
 } from '../runs-store.js';
 import {
+  type LivenessState,
+  deriveLiveness,
+  readProcesses,
+} from '../trace-store.js';
+import {
   PROGRAM,
   type Viewport,
   plainText,
@@ -62,6 +67,7 @@ const JSON_FIELDS: readonly string[] = [
   'id',
   'input',
   'lastVerdict',
+  'live',
   'models',
   'rounds',
   'sessionId',
@@ -118,10 +124,28 @@ export function relativeTime(timestamp: string, now: Date): string {
 
 /**
  * The columns, in order, always — the same discipline the plan tables keep. A
- * run that has no verdict yet still has the column, so the fifth field of a
- * piped row is the verdict on every run of this command rather than on some.
+ * run with no verdict yet still has that column and a run that is not running
+ * still has the live one, so a piped row is the same six fields in the same
+ * order on every run of this command rather than on some: `verdict` is field 5
+ * and `live` is field 6.
+ *
+ * The `live` column is a derived view over the trace, not a ledger field
+ * (Decision 1 in T4c-2). It answers the question R2 asks: which runs are
+ * actually alive, and which are stuck. Values:
+ * - `live`: the process is running right now (pid answers)
+ * - `died`: the process was killed; nobody settled it — the stuck run
+ * - `-`: not applicable; the run settled or is not `running`
+ * - `?`: unknown; no trace, degraded read, or pid not recorded
+ *
+ * It is appended rather than placed beside `status`, where it would read more
+ * naturally, because a piped row is a positional contract and `-` is a legal
+ * value of both this column and `verdict`. Inserted at field 5, it would not
+ * break a reader that had `cut -f5` meaning "the verdict": that reader would
+ * pull `-` off a settled run and conclude no verdict had been reached, which is
+ * a wrong answer nothing announces. Every field position that existed before
+ * this column therefore stays where it was, and the new one goes on the end.
  */
-const COLUMNS: readonly string[] = ['id', 'started', 'input', 'status', 'verdict'];
+const COLUMNS: readonly string[] = ['id', 'started', 'input', 'status', 'verdict', 'live'];
 
 /** Stands in for a verdict that has not been reached. */
 const NO_VERDICT = '-';
@@ -189,11 +213,16 @@ export function mostRecentFirst(runs: readonly RunRecord[]): RunRecord[] {
  * ago" is worth reading and worthless to sort by. Every cell is flattened and
  * stripped by the table itself, so nothing a run was named with can repaint the
  * screen on its way through here.
+ *
+ * The `liveness` map is optional: when absent (e.g. trace directory does not
+ * exist), the output is byte-identical except for the new column, which
+ * receives the value determined by deriving from undefined/absent trace data.
  */
 export function renderRuns(
   records: readonly RunRecord[],
   view: Viewport,
   now: Date,
+  liveness?: ReadonlyMap<string, LivenessState>,
 ): string {
   const rows = records.map((record) => [
     cell(record.id),
@@ -201,6 +230,7 @@ export function renderRuns(
     cell(record.input),
     cell(record.status),
     verdictOf(record),
+    liveness?.get(record.id) ?? deriveLiveness(undefined, record.status),
   ]);
   // The id keeps its width while any other column still has some to give: it is
   // the one cell here that is meant to be typed back in, at `exolvra-genesis resume`.
@@ -226,6 +256,7 @@ export interface RunJson {
   id: string;
   input: string;
   lastVerdict: string | null;
+  live: LivenessState;
   models: { lead: string; builder: string; critic: string };
   rounds: number | null;
   sessionId: string | null;
@@ -233,12 +264,16 @@ export interface RunJson {
   status: RunStatus;
 }
 
-export function asJson(records: readonly RunRecord[]): RunJson[] {
+export function asJson(
+  records: readonly RunRecord[],
+  liveness?: ReadonlyMap<string, LivenessState>,
+): RunJson[] {
   return records.map((record) => ({
     costUsd: record.costUsd ?? null,
     id: record.id,
     input: record.input,
     lastVerdict: record.lastVerdict ?? null,
+    live: liveness?.get(record.id) ?? deriveLiveness(undefined, record.status),
     models: record.models,
     rounds: record.rounds ?? null,
     sessionId: record.sessionId,
@@ -269,6 +304,32 @@ const runsCommand: Command = {
   // an empty stdout. Every other command is still held to the rule.
   emptyIsSuccess: true,
   sections: [
+    {
+      title: 'LIVE COLUMN',
+      lines: [
+        '  The LIVE column shows whether a run that says "running" is actually',
+        '  running right now or was killed without being settled.',
+        '',
+        '  Values:',
+        '    live  - the process is running right now',
+        '    died  - the process was killed; the run is stuck',
+        '    -     - not applicable; the run has already settled',
+        '    ?     - unknown; no trace data, no pid recorded, or the process',
+        '            holding the pid could not be identified',
+        '',
+        ...wrapText(
+          'This is read from the pid the run recorded when it started. Pids are ' +
+            'recycled by the operating system, so the pid alone is not enough: a ' +
+            'pid that answers is also checked against when its process started, ' +
+            'and a process that started after the run opened its row is a ' +
+            'different one wearing the same number, which reads as "died". Where ' +
+            'that start time cannot be read the answer is "?" rather than a ' +
+            'guess in either direction.',
+          78,
+          2,
+        ),
+      ],
+    },
     {
       title: 'JSON FIELDS',
       lines: [
@@ -316,10 +377,20 @@ async function runRuns(argv: string[], ctx: Ctx): Promise<number> {
   // naming the file; it is never quietly reported as a directory with no runs.
   const recent = mostRecentFirst(readRuns(cwd)).slice(0, limit);
 
+  // Compute liveness for each run. The trace is read for each run; nothing
+  // outside trace-store.ts opens the store (C3). The liveness derivation is a
+  // pure function over its inputs, which allows it to be tested both end to
+  // end and directly.
+  const liveness = new Map<string, LivenessState>();
+  for (const record of recent) {
+    const reading = readProcesses(cwd, record.id);
+    liveness.set(record.id, deriveLiveness(reading, record.status));
+  }
+
   if (args.bool(jsonFlag)) {
     // Indented for a terminal, one line for a pipe: the same output either way,
     // laid out for whoever is reading it.
-    const records = asJson(recent);
+    const records = asJson(recent, liveness);
     const json = view.tty ? JSON.stringify(records, null, 2) : JSON.stringify(records);
     ctx.stdout.write(json + '\n');
     return EXIT.WIN;
@@ -339,6 +410,6 @@ async function runRuns(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.WIN;
   }
 
-  ctx.stdout.write(renderRuns(recent, view, new Date()));
+  ctx.stdout.write(renderRuns(recent, view, new Date(), liveness));
   return EXIT.WIN;
 }

@@ -103,7 +103,8 @@ function probes() {
         label: `${command.name} ${spec.name}`,
         args: [command.name],
         env: { [spec.name]: spec.value.invalid },
-        names: [spec.name, spec.value.invalid],
+        names: spec.sensitive ? [spec.name] : [spec.name, spec.value.invalid],
+        secret: spec.sensitive ? spec.value.invalid : undefined,
       });
     }
   }
@@ -226,6 +227,7 @@ for (const probe of PROBES) {
       `${probe.label} must exit 2, got ${code}\n${stdout}\n${stderr}`,
     );
     assert.equal(stdout, '', `${probe.label} must print nothing to stdout`);
+    if (probe.secret !== undefined) assert.equal(stderr.includes(probe.secret), false, `${probe.label} must not echo the credential value`);
     for (const needle of probe.names) {
       assert.ok(
         stderr.includes(needle),

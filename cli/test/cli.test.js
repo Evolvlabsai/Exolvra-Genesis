@@ -333,14 +333,23 @@ test('an unknown command exits 2 with a gh-shaped error naming what exists', () 
    */
   const listed = lines.slice(5).filter((line) => line !== '');
   assert.deepEqual(listed, [
+    '  chart',
+    '  daemon',
+    '  dashboard',
+    '  doctor',
+    '  gate',
     '  goals',
     '  interview',
     '  plan',
     '  queue',
     '  resume',
+    '  round',
     '  run',
     '  runs',
     '  standards',
+    '  status',
+    '  stop',
+    '  trace',
     '  work',
   ]);
 
@@ -369,8 +378,8 @@ test('help <command> and <command> --help are one page, for every command', () =
     const viaHelp = run(['help', command.name]);
     const viaFlag = run([command.name, '--help']);
 
-    assert.equal(viaHelp.code, 0, 'help ' + command.name + ' exited ' + viaHelp.code);
-    assert.equal(viaFlag.code, 0, command.name + ' --help exited ' + viaFlag.code);
+    assert.equal(viaHelp.code, 0, 'help ' + command.name + ' exited ' + viaHelp.code + '\n' + viaHelp.stdout + viaHelp.stderr);
+    assert.equal(viaFlag.code, 0, command.name + ' --help exited ' + viaFlag.code + '\n' + viaFlag.stdout + viaFlag.stderr);
     assert.ok(viaFlag.stdout.length > 0, command.name + ' --help printed nothing');
     assert.equal(viaHelp.stderr, '', 'help ' + command.name + ' wrote to stderr');
     assert.equal(

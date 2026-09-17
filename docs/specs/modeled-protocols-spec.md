@@ -69,7 +69,7 @@ its check are one deliverable here, never two.
 - **R2 — The proving ground: the claim protocol, retroactively.** Model the
   shipped claim/heartbeat/reclaim lifecycle (ready/working/review/blocked/
   triage × sticky attestation × heartbeat freshness × one attacker × one
-  crashing runner) in `docs/models/claim-protocol.tla`, with the invariants
+  crashing runner) in `docs/models/ClaimProtocol.tla`, with the invariants
   the eight passes paid for — at minimum: one live claimant; an
   unauthenticated comment may delay recovery, never cause a write and never
   the authorization label; a crashed runner never strands an issue forever

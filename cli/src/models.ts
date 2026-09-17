@@ -1,4 +1,6 @@
-import { UsageError } from './exit.js';
+import { ConfigError, UsageError } from './exit.js';
+import { redactSecrets } from './github.js';
+import { plainText } from './usage.js';
 
 /**
  * The model each role runs on. `inherit` means "whatever the caller uses".
@@ -251,4 +253,70 @@ export function assertAgentModel(
     ].join('\n'),
     usage,
   );
+}
+
+/** Where the lead model was selected, retained through the SDK boundary. */
+export type ModelSource = 'flag' | 'config' | 'resume' | 'environment' | 'inherit';
+
+export interface ModelRequest {
+  lead: string;
+  source?: ModelSource;
+  env?: NodeJS.ProcessEnv;
+  resolvedModel?: string;
+}
+
+/** A provider diagnostic is one printable, redacted line, never a JSON dump. */
+export function providerDetail(value: string, env: NodeJS.ProcessEnv = {}): string {
+  let detail = plainText(value).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const jsonAt = detail.indexOf('{');
+  if (jsonAt >= 0) {
+    try {
+      const body = JSON.parse(detail.slice(jsonAt)) as { message?: unknown; error?: { message?: unknown } };
+      const message = body.error?.message ?? body.message;
+      detail = typeof message === 'string' ? message : detail.slice(0, jsonAt).trim();
+    } catch {
+      // Malformed provider JSON still must not become terminal output.
+      detail = detail.slice(0, jsonAt).trim();
+    }
+  }
+  detail = plainText(detail).replace(/\s+/g, ' ').trim();
+  for (const [key, secret] of Object.entries(env)) {
+    if (/(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)/i.test(key) && secret && secret.length >= 8) {
+      detail = redactSecrets(detail, secret);
+    }
+  }
+  return redactSecrets(detail)
+    .replace(/\bsk-(?:ant-)?[A-Za-z0-9_-]{12,}\b/g, '[redacted]')
+    .slice(0, 240);
+}
+
+/**
+ * Recognise model-resolution failures at every SDK exit, including a provider
+ * that reports an API error in an otherwise successful assistant/result turn.
+ * Ordinary prose about models is not a failure; callers screen stream text for
+ * an SDK error marker before passing it here.
+ */
+export function modelResolutionError(error: unknown, request: ModelRequest): ConfigError | undefined {
+  const raw = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const missingModel = /\b(?:(?:unknown|invalid|unsupported|unavailable)\s+model|model\b.{0,160}(?:not found|does not exist|doesn't exist|not available|unavailable|not supported|invalid|not have access|no access)|not_found_error\b.{0,160}model)/is.test(raw);
+  const apiNotFound = /\b404\b/.test(raw) && /\b(?:API Error|not_found_error)\b/i.test(raw);
+  if (!missingModel && !apiNotFound) return undefined;
+  const env = request.env ?? process.env;
+  const inherited = canonicalModel(request.lead) === MODEL_INHERIT;
+  const envModel = env['ANTHROPIC_MODEL'];
+  const source = inherited ? (envModel ? 'environment' : 'inherit') : request.source ?? 'flag';
+  const origin = source === 'environment' ? 'the ANTHROPIC_MODEL environment variable'
+    : source === 'config' ? 'your saved Genesis model setting'
+      : source === 'resume' ? 'the saved run'
+        : source === 'inherit' ? 'your saved Claude default'
+          : '--model';
+  const requested = inherited ? envModel || request.resolvedModel || MODEL_INHERIT : request.lead;
+  const detail = providerDetail(raw, env);
+  return new ConfigError([
+    'the Claude Agent SDK cannot serve model "' + providerDetail(requested, env) + '" from ' + origin,
+    ...(detail === '' ? [] : ['  provider: ' + detail]),
+    '  select an available model with --model <id>',
+    ...wrapAccepted(listModels().filter((model) => model.value !== MODEL_INHERIT).map((model) => model.value)),
+    '  usage: exolvra-genesis <command> [arguments] --model <id>',
+  ].join('\n'));
 }

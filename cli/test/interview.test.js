@@ -490,7 +490,10 @@ test('R16: a clean tarball install carries every file the CLI loads', () => {
 
   // The package as it would really be published, installed as it would really
   // be installed. Nothing below reads the working tree.
-  const packed = run(['pack', '--pack-destination', into], PACKAGE_ROOT).trim().split('\n').at(-1);
+  // pretest already built it. Re-running prepack here would rewrite shared
+  // dist files while other test processes import them. The package suite
+  // separately verifies that publishing invokes the build hook.
+  const packed = run(['pack', '--ignore-scripts', '--pack-destination', into], PACKAGE_ROOT).trim().split('\n').at(-1);
   run(['init', '-y'], into);
   run(['install', '--no-audit', '--no-fund', join(into, packed)], into);
 

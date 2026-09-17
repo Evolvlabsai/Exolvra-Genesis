@@ -872,6 +872,7 @@ export const IGNORE_PATTERN: readonly string[] = [
   '/' + RUN_DIR + '/*',
   '!/' + RUN_DIR + '/' + STANDARDS_FILE,
   '!/' + RUN_DIR + '/goals/',
+  '!/' + RUN_DIR + '/map/',
 ];
 
 /** A rule that ignores the state directory, or everything inside it. */

@@ -7,6 +7,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,6 +16,8 @@ import { after, test } from 'node:test';
 import { gunzipSync } from 'node:zlib';
 
 import { PACKAGE_ROOT, planAnswer, runProcess } from './run-cli.js';
+import { PREFLIGHT_FAKE } from './preflight-fake.js';
+import { modelResolutionError } from '../dist/models.js';
 
 /*
  * C3 / C1, checked against a package that was really published.
@@ -170,7 +173,7 @@ test('the published package carries the plugin markdown and loads it', () => {
   writeFileSync(
     join(sdk, 'index.js'),
     "import { readFileSync } from 'node:fs';\n" +
-      'export function query() {\n' +
+      'export function query({ prompt, options }) {\n' + PREFLIGHT_FAKE +
       '  const answer = readFileSync(process.env.EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE, "utf8");\n' +
       '  return {\n' +
       '    async interrupt() {},\n' +
@@ -182,6 +185,12 @@ test('the published package carries the plugin markdown and loads it', () => {
       '}\n',
     'utf8',
   );
+
+  // Installed runtime dependencies are real; only the provider is substituted.
+  for (const entry of readdirSync(join(PACKAGE_ROOT, 'node_modules'))) {
+    if (entry.startsWith('.') || entry === '@anthropic-ai') continue;
+    symlinkSync(join(PACKAGE_ROOT, 'node_modules', entry), join(home, 'node_modules', entry), 'junction');
+  }
 
   // 4. A command that needs the markdown, run from the installed package.
   const workdir = join(home, 'work');
@@ -206,6 +215,32 @@ test('the published package carries the plugin markdown and loads it', () => {
   assert.ok(stdout.startsWith('GOAL\n'), stdout);
   assert.ok(stdout.includes('a bash script'), stdout);
   assert.equal(stderr, '');
+
+  // 5. First contact failures are exercised through the actual packed binary.
+  const refused = runProcess(bin, ['run', 'a verified script', '--auto', '--no-config', '--permission-mode', 'acceptEdits'], {
+    cwd: workdir, env: { EXOLVRA_GENESIS_PLUGIN_DIR: undefined, GENESIS_TEST_PREFLIGHT_OUTCOME: 'denied', ANTHROPIC_MODEL: undefined },
+  });
+  assert.equal(refused.code, 2, refused.stderr);
+  assert.equal(refused.stdout, '');
+  assert.equal(refused.stderr, [
+    'the session denied command execution in acceptEdits mode',
+    '  the SDK denied the Bash command under the effective session permissions',
+    '  reported probe spend: $0.000000; tokens: 0 input, 0 output',
+    '  an unattended build must execute its verification commands',
+    '  retry with --permission-mode bypassPermissions',
+    '  usage: exolvra-genesis <run | resume | work> [arguments] --permission-mode bypassPermissions',
+    '', '',
+  ].join('\n'));
+  assert.deepEqual(readdirSync(workdir), [], 'permission refusal must precede all build artifacts');
+
+  const stale = 'API Error: 404 {"type":"error","error":{"type":"not_found_error","message":"model: stale-model"}}';
+  writeFileSync(answer, stale, 'utf8');
+  const unavailable = runProcess(bin, ['plan', 'a verified script', '--verbose'], {
+    cwd: workdir, env: { EXOLVRA_GENESIS_PLUGIN_DIR: undefined, EXOLVRA_GENESIS_TEST_SDK_RESULT_FILE: answer, ANTHROPIC_MODEL: undefined },
+  });
+  assert.equal(unavailable.code, 2, unavailable.stderr);
+  assert.equal(unavailable.stdout, '');
+  assert.equal(unavailable.stderr, modelResolutionError(stale, { lead: 'inherit', env: {} }).message + '\n\n');
 });
 
 /**
@@ -256,6 +291,9 @@ test('the packed file list is what the package means to ship', () => {
   const listed = JSON.parse(npm(['pack', '--dry-run', '--ignore-scripts', '--json']));
   const names = (listed[0]?.files ?? []).map((entry) => entry.path);
   assert.ok(names.includes('package.json'));
+  for (const asset of ['index.html', 'styles.css', 'app.js']) {
+    assert.ok(names.includes('dist/panel/' + asset), 'control panel asset missing from package: ' + asset);
+  }
   assert.ok(
     names.includes('README.md'),
     'the registry page reads the package root README; a tarball without one ships a blank page',

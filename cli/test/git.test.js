@@ -309,6 +309,13 @@ const LOCAL_SUBCOMMANDS = [
   'rev-list',
   'diff',
   'remote',
+  'read-tree',
+  'rm',
+  'write-tree',
+  'commit-tree',
+  'update-ref',
+  'bundle',
+  'init',
 ];
 const NETWORK_SUBCOMMANDS = ['push'];
 
@@ -385,6 +392,11 @@ test('every vocabulary entry builds with valid values, and only those', () => {
     '<message>': 'fix login\n\nthe body of the message',
     '<remote>': 'origin',
     '<pathspec...>': [':/', ':(exclude,top).exolvra-genesis'],
+    '<object-id>': 'a'.repeat(40),
+    '<new-object>': 'a'.repeat(40),
+    '<old-object>': '0'.repeat(40),
+    '<round-ref>': 'refs/exolvra/rounds/run/piece/1',
+    '<bundle-path>': join(tmpdir(), 'round.bundle'),
   };
 
   for (const [name, template] of Object.entries(GIT_COMMANDS)) {
@@ -496,6 +508,11 @@ test('every declared value type refuses what it must', () => {
     ],
     '<message>': ['', '   \n\n  ', 'subject\n\nCo-authored-by: Someone <s@example.com>'],
     '<remote>': ['', 'or/igin', '-f', 'origin remote'],
+    '<object-id>': ['', 'HEAD', '--force', 'a'.repeat(39)],
+    '<new-object>': ['', 'HEAD', '--force'],
+    '<old-object>': ['', 'HEAD', '--force'],
+    '<round-ref>': ['', 'refs/heads/main', 'refs/exolvra/rounds/../piece/1', 'refs/exolvra/rounds/run/piece/0'],
+    '<bundle-path>': ['', 'https://example.com/round.bundle', 'relative.bundle', '--upload-pack=evil'],
     // A pathspec is git's own magic syntax, so the type is written over the
     // finished pathspec: a value that could introduce magic of its own is the
     // whole risk here.
@@ -668,6 +685,9 @@ const PUBLIC_SURFACE = [
   'repoRoot',
   'revRange',
   'workingTreeChanges',
+  'roundRef',
+  'exportRoundBundle',
+  'importRoundBundle',
 ];
 
 test('the public surface is operations with meanings, never a git command line', () => {

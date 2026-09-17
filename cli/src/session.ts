@@ -6,9 +6,15 @@ import type {
 
 import { buildAgentDefinitions } from './agents.js';
 import { ConfigError } from './exit.js';
-import type { ModelChoice } from './models.js';
-import { MODEL_INHERIT, canonicalModel, modelFault } from './models.js';
+import type { ModelChoice, ModelSource } from './models.js';
+import { DEFAULT_MODEL_CHOICE, MODEL_INHERIT, canonicalModel, modelFault, modelResolutionError, providerDetail } from './models.js';
 import type { PluginSources } from './plugin-dir.js';
+import { createRoundGuards, settleRoundGuards } from './round-guards.js';
+import { watchRunStop } from './run-control.js';
+import type { TraceStore } from './trace-store.js';
+import { createLiveMonitor, stallThresholds, type LiveBudget, type LivePhase } from './live-status.js';
+import { randomUUID } from 'node:crypto';
+import { EXECUTION_PROBE_MAX_COST_USD, EXECUTION_PROBE_PREFIX, executionPreflightError, preflightSpendDetail, type ExecutionPreflight, type ExecutionProbeResult } from './preflight.js';
 
 /** One message off the agent stream. */
 export type SdkMessage = SDKMessage;
@@ -31,10 +37,15 @@ export type SessionTransport = (params: {
 }) => SessionStream | Promise<SessionStream>;
 
 export interface SessionOptions {
+  runId?: string;
+  trace?: TraceStore;
+  /** Current invocation budget, including preflight and previous SDK turns. */
+  budget?: () => LiveBudget;
   /** The lead prompt, already rendered from the plugin markdown. */
   prompt: string;
   sources: PluginSources;
   models: ModelChoice;
+  modelSource?: ModelSource;
   cwd: string;
   hooks?: SessionHooks;
   /**
@@ -58,6 +69,10 @@ export interface SessionOptions {
    */
   maxBudgetUsd?: number;
   permissionMode?: PermissionMode;
+  /** Restrict the tool surface for bounded capability probes. */
+  tools?: Options['tools'];
+  /** The sole command a capability probe may execute, at most once. */
+  probeCommand?: string;
   env?: NodeJS.ProcessEnv;
   /** Overrides the Claude Agent SDK. Used by tests. */
   transport?: SessionTransport;
@@ -184,6 +199,8 @@ export function createSession(opts: SessionOptions): Session {
   let sessionId: string | undefined;
   let stream: SessionStream | undefined;
   let interrupted = false;
+  let resolvedModel: string | undefined;
+  const modelRequest = () => ({ lead: opts.models.lead, source: opts.modelSource, env: opts.env, resolvedModel });
 
   const stop = (): void => {
     interrupted = true;
@@ -200,6 +217,8 @@ export function createSession(opts: SessionOptions): Session {
       settingSources: ['project'],
       permissionMode: opts.permissionMode ?? 'acceptEdits',
     };
+    if (options.permissionMode === 'bypassPermissions') options.allowDangerouslySkipPermissions = true;
+    if (opts.tools !== undefined) options.tools = opts.tools;
     // Canonical, or nothing. Nothing unvalidated reaches the SDK, including
     // from callers that did not come through the CLI's own flag parsing — and
     // what does reach it is the spelling this build publishes, not the one the
@@ -219,6 +238,21 @@ export function createSession(opts: SessionOptions): Session {
     if (opts.maxBudgetUsd !== undefined) options.maxBudgetUsd = opts.maxBudgetUsd;
     if (opts.env !== undefined) options.env = opts.env;
     if (resumeId !== undefined) options.resume = resumeId;
+    if (opts.runId !== undefined) options.hooks = createRoundGuards(opts.cwd, opts.runId, opts.models.builder, opts.trace);
+    if (opts.probeCommand !== undefined) {
+      let used = false;
+      options.hooks = { PreToolUse: [{ hooks: [async (input) => {
+        if (input.hook_event_name !== 'PreToolUse') return {};
+        const args = input.tool_input as { command?: unknown; dangerouslyDisableSandbox?: unknown; run_in_background?: unknown };
+        if (!used && input.tool_name === 'Bash' && args.command === opts.probeCommand &&
+            args.dangerouslyDisableSandbox !== true && args.run_in_background !== true) {
+          used = true;
+          // No "allow" decision: the real session permission policy still applies.
+          return {};
+        }
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'A permission probe may execute only its one exact no-op command.' } };
+      }] }] };
+    }
     return options;
   };
 
@@ -234,6 +268,10 @@ export function createSession(opts: SessionOptions): Session {
     // fix (exit 2). A provider that failed after it started produced a run that
     // did not finish (exit 1). Nothing else can tell the two apart from here.
     let started = false;
+    const usageIds = new Set<string>();
+    const monitor = opts.runId !== undefined && opts.trace !== undefined
+      ? createLiveMonitor(opts.cwd, opts.runId, opts.trace, opts.maxBudgetUsd, stallThresholds(opts.env), opts.budget) : undefined;
+    const releaseControl = opts.runId === undefined ? undefined : watchRunStop(opts.cwd, opts.runId);
 
     // While a session is draining, a stop signal belongs to the run: it ends
     // the run rather than the process, so the exit code still says what
@@ -246,13 +284,64 @@ export function createSession(opts: SessionOptions): Session {
         started = true;
         const id = (message as { session_id?: unknown }).session_id;
         if (typeof id === 'string' && id !== '') sessionId = id;
+        if (message.type === 'system' && message.subtype === 'init') resolvedModel = message.model;
+        // The SDK sometimes reports a 404 as assistant text and ends with a
+        // successful result. Classify it before hooks can print an ANSWER block.
+        const prose = assistantText(message);
+        const diagnostics = message.type === 'result'
+          ? message.subtype === 'success' ? (/^\s*API Error:/i.test(message.result) ? [message.result] : []) : message.errors
+          : message.type === 'assistant' && (message.error !== undefined || /^\s*API Error:/i.test(prose)) ? [prose] : [];
+        for (const diagnostic of diagnostics) {
+          const fault = modelResolutionError(diagnostic, modelRequest());
+          if (fault !== undefined) {
+            if (message.type === 'result') Object.assign(fault, { sessionUsage: {
+              costUsd: message.total_cost_usd,
+              inputTokens: message.usage?.input_tokens ?? 0,
+              outputTokens: message.usage?.output_tokens ?? 0,
+            } });
+            if (message.type === 'result') {
+              // Keep the provider's accounting observable while withholding
+              // its raw API text from every renderer and transcript hook.
+              opts.hooks?.onMessage(message.subtype === 'success' ? { ...message, result: '' } : { ...message, errors: [] });
+              monitor?.spend(message.total_cost_usd);
+            }
+            throw fault;
+          }
+        }
         opts.hooks?.onMessage(message);
+        let phase: LivePhase | undefined;
+        let activityPiece: string | undefined, activityRound: number | undefined;
+        const parent = (message as { parent_tool_use_id?: string | null }).parent_tool_use_id;
+        if (parent) {
+          const agent = opts.trace?.processes().find((p) => p.taskId === parent);
+          if (agent) { phase = agent.role; activityPiece = agent.piece ?? undefined; activityRound = agent.round ?? undefined; }
+        }
+        if (message.type === 'assistant' && Array.isArray(message.message.content)) {
+          const usage = message.message.usage;
+          const id = message.message.id;
+          if (usage && id && !usageIds.has(id)) {
+            usageIds.add(id); monitor?.tokens(usage.input_tokens, usage.output_tokens);
+          }
+          for (const block of message.message.content) {
+            if (block.type !== 'tool_use') continue;
+            if (block.name === 'Bash') phase = 'verification';
+            if (block.name === 'Task' || block.name === 'Agent') {
+              const role = String((block.input as { subagent_type?: unknown }).subagent_type ?? '');
+              phase = role.includes('builder') ? 'builder' : role.includes('critic') ? 'critic' : 'lead';
+            }
+          }
+        } else if (message.type === 'user') phase = 'lead';
+        monitor?.activity(assistantText(message) || message.type, phase, activityPiece, activityRound);
+        if (message.type === 'result') monitor?.spend(message.total_cost_usd);
         if (message.type === 'assistant') assistant.push(assistantText(message));
         if (message.type === 'result') final = message;
       }
     } catch (error) {
       const text = joinText(assistant);
       if (interrupted) return toResult(undefined, text, sessionId, true);
+      if (error instanceof ConfigError) throw error;
+      const modelError = modelResolutionError(error, modelRequest());
+      if (modelError !== undefined) throw modelError;
       // Before either classification below: a fault of this kind is neither a
       // run that ended nor an environment to fix, and it is the one thing here
       // that must not be dressed up as either. It leaves unwrapped, and the
@@ -312,8 +401,14 @@ export function createSession(opts: SessionOptions): Session {
         ].join('\n'),
       );
     } finally {
-      for (const signal of STOP_SIGNALS) process.removeListener(signal, stop);
-      stream = undefined;
+      try {
+        settleRoundGuards(options.hooks);
+      } finally {
+        releaseControl?.();
+        monitor?.close();
+        for (const signal of STOP_SIGNALS) process.removeListener(signal, stop);
+        stream = undefined;
+      }
     }
 
     return toResult(final, joinText(assistant), sessionId, interrupted);
@@ -330,6 +425,138 @@ export function createSession(opts: SessionOptions): Session {
       await stream?.interrupt();
     },
   };
+}
+
+export interface ExecutionPreflightOptions {
+  cwd: string;
+  sources: PluginSources;
+  models?: ModelChoice;
+  modelSource?: ModelSource;
+  permissionMode: PermissionMode;
+  env?: NodeJS.ProcessEnv;
+  isTTY: boolean;
+  /** Called at most once, and never in a headless invocation. */
+  confirmBypass?: () => Promise<boolean>;
+  /** Requested provider budget across attempts, capped at ten cents; actual spend is recorded. */
+  maxBudgetUsd?: number;
+  transport?: SessionTransport;
+}
+
+/**
+ * Execute one harmless Bash command through the same SDK permission machinery
+ * as the lead. The user authorised this small model-backed query because SDK
+ * 0.1.x has no public zero-token execute-tool endpoint. Only a matched tool
+ * result proves capability; settings, model prose, and local shells do not.
+ */
+export async function preflightExecution(opts: ExecutionPreflightOptions): Promise<ExecutionPreflight> {
+  const receipt: ExecutionPreflight = { permissionMode: opts.permissionMode, attempts: [], costUsd: 0, inputTokens: 0, outputTokens: 0 };
+  const ceiling = Math.min(opts.maxBudgetUsd ?? EXECUTION_PROBE_MAX_COST_USD, EXECUTION_PROBE_MAX_COST_USD);
+  const probe = async (mode: PermissionMode): Promise<ExecutionProbeResult> => {
+    const marker = 'genesis-preflight-' + randomUUID();
+    const command = "printf '%s\\n' '" + marker + "'";
+    const attempt: ExecutionProbeResult = { mode, capability: 'command-execution', command, outcome: 'unavailable', detail: 'the SDK returned no successful command result; execution is unverified', costUsd: 0, inputTokens: 0, outputTokens: 0, usageReported: false };
+    if (!Number.isFinite(ceiling) || ceiling <= receipt.costUsd) {
+      attempt.detail = 'the permission probe has no remaining cost budget';
+      attempt.usageReported = true; // No query was made, so zero is known.
+      return attempt;
+    }
+    const toolIds = new Set<string>();
+    let verified = false;
+    let denied = false;
+    const session = createSession({
+      cwd: opts.cwd, sources: opts.sources, models: opts.models ?? DEFAULT_MODEL_CHOICE,
+      modelSource: opts.modelSource, env: opts.env, transport: opts.transport,
+      permissionMode: mode, subagents: false, tools: ['Bash'], probeCommand: command, maxTurns: 2,
+      maxBudgetUsd: ceiling - receipt.costUsd,
+      prompt: EXECUTION_PROBE_PREFIX +
+        'Execute exactly this harmless Bash command once, then stop. Do not inspect or change any files. ' +
+        'If execution is denied, stop without attempting alternatives. This is a capability check, not a build.\n' + command,
+      hooks: { onMessage(message): void {
+        if (message.type === 'result') {
+          attempt.usageReported = true;
+          attempt.costUsd = message.total_cost_usd;
+          attempt.inputTokens = message.usage?.input_tokens ?? 0;
+          attempt.outputTokens = message.usage?.output_tokens ?? 0;
+          if (message.permission_denials?.some((entry) => entry.tool_name === 'Bash')) denied = true;
+        }
+        if (message.type !== 'assistant' && message.type !== 'user') return;
+        const content = message.message.content;
+        if (!Array.isArray(content)) return;
+        for (const block of content) {
+          if (block.type === 'tool_use' && block.name === 'Bash' && (block.input as { command?: unknown }).command === command) toolIds.add(block.id);
+          if (block.type !== 'tool_result' || !toolIds.has(block.tool_use_id)) continue;
+          const output = typeof block.content === 'string' ? block.content : Array.isArray(block.content)
+            ? block.content.map((item: { type: string; text?: string }) => item.type === 'text' ? item.text ?? '' : '').join('\n') : '';
+          if (block.is_error === true) {
+            denied = /permission|denied|not allowed|not permitted/i.test(output);
+            attempt.detail = providerDetail(output, opts.env);
+          } else if (output.trim() === marker) verified = true;
+        }
+      } },
+    });
+    let result: SessionResult;
+    try {
+      result = await session.start();
+    } catch (error) {
+      // A model or startup refusal still owns every cost already reported by
+      // its SDK query. Preserve the original house-shaped invocation error.
+      const usage = (error as { sessionUsage?: { costUsd: number; inputTokens: number; outputTokens: number } }).sessionUsage;
+      if (usage) {
+        attempt.usageReported = true;
+        attempt.costUsd = Math.max(attempt.costUsd, usage.costUsd);
+        attempt.inputTokens = Math.max(attempt.inputTokens, usage.inputTokens);
+        attempt.outputTokens = Math.max(attempt.outputTokens, usage.outputTokens);
+      }
+      attempt.detail = providerDetail(error instanceof Error ? error.message : String(error), opts.env);
+      receipt.attempts.push(attempt);
+      receipt.costUsd += attempt.costUsd;
+      receipt.inputTokens += attempt.inputTokens;
+      receipt.outputTokens += attempt.outputTokens;
+      if (error instanceof Error) {
+        Object.assign(error, { preflight: receipt });
+        const spend = preflightSpendDetail(receipt);
+        error.message = error.message.includes('\n  usage:')
+          ? error.message.replace('\n  usage:', '\n' + spend + '\n  usage:')
+          : error.message + '\n' + spend;
+      }
+      throw error;
+    }
+    attempt.costUsd = Math.max(attempt.costUsd, result.costUsd);
+    if (result.reason === 'interrupted') {
+      attempt.interrupted = true;
+      attempt.detail = 'the permission probe was interrupted; no build was started';
+    } else if (verified && result.status === 'complete') {
+      attempt.outcome = 'allowed';
+      attempt.detail = 'the SDK Bash tool executed the no-op and returned its expected marker';
+    } else if (denied) {
+      attempt.outcome = 'denied';
+      attempt.detail = 'the SDK denied the Bash command under the effective session permissions';
+    } else if (result.error) attempt.detail = providerDetail(result.error, opts.env);
+    return attempt;
+  };
+  for (let pass = 0; pass < 2; pass += 1) {
+    const attempt = await probe(receipt.permissionMode);
+    receipt.attempts.push(attempt);
+    receipt.costUsd += attempt.costUsd;
+    receipt.inputTokens += attempt.inputTokens;
+    receipt.outputTokens += attempt.outputTokens;
+    if (attempt.outcome === 'allowed') return receipt;
+    if (pass === 0 && !attempt.interrupted && attempt.usageReported && receipt.permissionMode !== 'bypassPermissions' && opts.isTTY) {
+      let consent = false;
+      try {
+        consent = await opts.confirmBypass?.() ?? false;
+      } catch (error) {
+        if (error instanceof Error) Object.assign(error, { preflight: receipt });
+        throw error;
+      }
+      if (consent) {
+        receipt.permissionMode = 'bypassPermissions';
+        continue;
+      }
+    }
+    throw executionPreflightError(attempt, receipt);
+  }
+  throw executionPreflightError(receipt.attempts[receipt.attempts.length - 1]!, receipt);
 }
 
 /**

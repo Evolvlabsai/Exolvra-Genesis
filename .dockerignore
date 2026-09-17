@@ -1,0 +1,20 @@
+# Only source and package metadata belong in the build context.
+.git
+**/node_modules
+**/dist
+**/.evidence
+**/*.tgz
+**/.exolvra-genesis
+**/.gauntlet
+**/.claude
+**/.codex
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/id_rsa
+**/id_ed25519
+**/*.log
+**/*.tsbuildinfo
+**/coverage
+**/.DS_Store

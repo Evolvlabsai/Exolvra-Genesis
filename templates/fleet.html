@@ -135,6 +135,11 @@
 <h2>Issue runs</h2>
 <div class="panel" id="fleet"></div>
 
+<section id="workers-section" hidden>
+<h2>Workers</h2>
+<div class="panel" id="workers"></div>
+</section>
+
 <footer id="foot"></footer>
 
 </div>
@@ -305,6 +310,23 @@
     var n = el('div', 'note');
     n.appendChild(fmt(d.note));
     fleet.appendChild(n);
+  }
+
+  if (Array.isArray(d.workers)) {
+    document.getElementById('workers-section').hidden = false;
+    var workers = document.getElementById('workers');
+    var wt = el('table'), wh = el('thead'), wr = el('tr'), wb = el('tbody');
+    ['Name', 'Machine', 'Capabilities', 'Status', 'Last seen', 'Current round'].forEach(function (h) { wr.appendChild(el('th', null, h)); });
+    wh.appendChild(wr); wt.appendChild(wh);
+    d.workers.forEach(function (w) {
+      var row = el('tr');
+      [w.name, w.machine, (w.capabilities || []).join(', '), w.live ? 'LIVE' : 'OFFLINE',
+        w.seen == null ? DASH : new Date(w.seen).toISOString(), w.current || DASH]
+        .forEach(function (v) { row.appendChild(el('td', null, String(v))); });
+      wb.appendChild(row);
+    });
+    wt.appendChild(wb); workers.appendChild(wt);
+    if (!d.workers.length) workers.appendChild(el('div', 'empty', 'No worker has registered.'));
   }
 
   // Footer

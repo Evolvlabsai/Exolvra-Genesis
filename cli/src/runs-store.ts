@@ -1,13 +1,16 @@
 import { randomBytes } from 'node:crypto';
 import {
   mkdirSync,
+  existsSync,
+  lstatSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import { ConfigError } from './exit.js';
 
@@ -51,6 +54,8 @@ export interface RunRecord {
   lastVerdict?: string;
   rounds?: number;
   costUsd?: number;
+  /** Coordinator spend already included in costUsd, committed with that total. */
+  distributedCostUsd?: number;
 }
 
 /**
@@ -233,6 +238,10 @@ function toRecord(value: unknown): RunRecord | string {
   if (!cost.ok) return '"costUsd" ' + named + ' is not a number';
   if (cost.value !== undefined) record.costUsd = cost.value;
 
+  const distributedCost = optional(fields['distributedCostUsd'], (value): value is number => isNumber(value) && value >= 0);
+  if (!distributedCost.ok) return '"distributedCostUsd" ' + named + ' is not a nonnegative number';
+  if (distributedCost.value !== undefined) record.distributedCostUsd = distributedCost.value;
+
   return record;
 }
 
@@ -330,6 +339,8 @@ export function readRuns(cwd: string): RunRecord[] {
 /** What `.exolvra-genesis/state.json` says, and how to say it back to the user. */
 export interface StateReading {
   status: RunStatus | undefined;
+  run?: string;
+  pid?: number;
   /** One phrase naming what was found, for printing under the file's path. */
   detail: string;
 }
@@ -368,7 +379,14 @@ export function readState(cwd: string): StateReading {
   if (typeof status !== 'string' || !isRunStatus(status)) {
     return { status: undefined, detail: 'it does not say what the run\'s status is' };
   }
-  return { status, detail: 'it says "' + status + '"' };
+  const fields = parsed as Record<string, unknown>;
+  if (fields['run'] !== undefined && (typeof fields['run'] !== 'string' || !isRunId(fields['run']))) {
+    return { status: undefined, detail: 'it contains an invalid run id' };
+  }
+  return { status, detail: 'it says "' + status + '"',
+    ...(typeof fields['run'] === 'string' ? { run: fields['run'] } : {}),
+    ...(Number.isSafeInteger(fields['pid']) && Number(fields['pid']) > 0 ? { pid: Number(fields['pid']) } : {}),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -429,7 +447,7 @@ function replace(from: string, to: string): void {
  * over it. A reader never sees a partial file, and a write that fails leaves
  * the previous contents exactly as they were.
  */
-function writeAtomic(path: string, text: string): void {
+export function writeAtomic(path: string, text: string): void {
   const directory = dirname(path);
   const temp = join(
     directory,
@@ -527,7 +545,7 @@ function release(lock: string): void {
  * would not be enough, because the losing writer's file is a whole, valid,
  * atomically written ledger that is simply missing the other's record.
  */
-function withLedgerLock<T>(cwd: string, change: () => T): T {
+export function withLedgerLock<T>(cwd: string, change: () => T): T {
   const lock = lockPath(cwd);
   mkdirSync(dirname(lock), { recursive: true });
 
@@ -663,9 +681,161 @@ export function updateRun(
  * written in — one object, one `"status"` key, one space after the colon — is
  * part of the contract and not a formatting choice.
  */
-export function writeState(cwd: string, status: RunStatus): void {
+export function writeState(cwd: string, status: RunStatus, run?: string, pid?: number): void {
   if (!isRunStatus(status)) {
     throw new Error('"' + String(status) + '" is not a run status');
   }
-  writeAtomic(statePath(cwd), JSON.stringify({ status }, null, 2) + '\n');
+  const previous = readState(cwd);
+  const id = run ?? previous.run;
+  if (id !== undefined && !isRunId(id)) throw new ConfigError('invalid run id');
+  writeAtomic(statePath(cwd), JSON.stringify({ status, ...(id === undefined ? {} : { run: id }),
+    ...(pid === undefined ? {} : { pid }) }, null, 2) + '\n');
+}
+
+/** All per-run paths pass through this boundary, including IDs read from disk. */
+export function runDirectory(cwd: string, id: string): string {
+  if (!isRunId(id)) throw new ConfigError('invalid run id: ' + id);
+  const root = resolve(cwd, RUN_DIR);
+  const target = join(root, 'runs', id);
+  for (const path of [root, join(root, 'runs'), target]) {
+    if (existsSync(path) && lstatSync(path).isSymbolicLink()) {
+      throw new ConfigError('run state must not traverse a symbolic link: ' + path);
+    }
+  }
+  return target;
+}
+
+const LEGACY_ARTIFACTS = ['bar', 'progress.html', 'tasks', 'task-specs', 'briefs', 'snapshots', 'critics', 'builders.json'];
+
+/** Merge an interrupted migration without overwriting either copy. */
+function archivePath(source: string, target: string, root: string): void {
+  for (const path of [source, target]) {
+    const rel = relative(root, resolve(path));
+    if (rel.startsWith('..') || resolve(path) === root) throw new ConfigError('archive escaped run state');
+    if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new ConfigError('cannot archive a symbolic link: ' + path);
+  }
+  if (!existsSync(target)) {
+    mkdirSync(dirname(target), { recursive: true });
+    renameSync(source, target);
+    return;
+  }
+  if (lstatSync(source).isDirectory() && lstatSync(target).isDirectory()) {
+    for (const entry of readdirSync(source)) archivePath(join(source, entry), join(target, entry), root);
+    // Empty legacy directories are harmless; hygiene never deletes anything.
+    return;
+  }
+  throw new ConfigError('archive destination already exists; both copies preserved\n  ' + source + '\n  ' + target);
+}
+
+function migrateLegacy(cwd: string, id: string): string[] {
+  const root = resolve(cwd, RUN_DIR);
+  const destination = runDirectory(cwd, id);
+  const moved: string[] = [];
+  for (const name of LEGACY_ARTIFACTS) {
+    const source = join(root, name);
+    if (!existsSync(source)) continue;
+    if (lstatSync(source).isDirectory() && readdirSync(source).length === 0) continue;
+    archivePath(source, join(destination, name), root);
+    moved.push(name);
+  }
+  return moved;
+}
+
+function assertReadableState(cwd: string): StateReading {
+  const state = readState(cwd);
+  if (existsSync(statePath(cwd)) && state.status === undefined) {
+    throw new ConfigError('could not read run state\n  ' + statePath(cwd) + '\n  ' + state.detail);
+  }
+  return state;
+}
+
+function unfinishedError(id: string): ConfigError {
+  return new ConfigError('a previous run is unfinished: ' + id + '\n  resume it with exolvra-genesis resume ' + id +
+    '\n  or stop it with exolvra-genesis stop ' + id + ' before starting another run');
+}
+
+/** The issue runner can finish remote lifecycle work while retaining a blocked
+ * verdict in history. Its explicit settlement receipt releases the checkout. */
+export function settledIssueRun(cwd: string, id: string | undefined): boolean {
+  if (id === undefined) return false;
+  try {
+    const value = JSON.parse(readFileSync(join(runDirectory(cwd, id), 'issue-owner.json'), 'utf8')) as Record<string, unknown>;
+    return value['run'] === id && typeof value['issueRun'] === 'string' && isRunId(value['issueRun']) && value['settled'] === true && typeof value['settledAt'] === 'string' && Number.isFinite(Date.parse(value['settledAt'])) && ['exolvra:ready', 'exolvra:review', 'exolvra:blocked', 'exolvra:triage'].includes(String(value['lifecycle']));
+  } catch { return false; }
+}
+
+function retainsCheckout(cwd: string, id: string | undefined, status: RunStatus | undefined): boolean {
+  return status === 'running' || (status === 'blocked' && !settledIssueRun(cwd, id));
+}
+
+export function assertCanStart(cwd: string): void {
+  runDirectory(cwd, 'startup-check');
+  const state = assertReadableState(cwd);
+  const unfinished = readRuns(cwd).find((r) => retainsCheckout(cwd, r.id, r.status));
+  if (retainsCheckout(cwd, state.run, state.status) || unfinished) throw unfinishedError(state.run ?? unfinished?.id ?? '(legacy run)');
+}
+
+/** The startup check, migration, ledger append and active pointer share one lock. */
+export function beginRun(cwd: string, rec: RunRecord): string[] {
+  const record = accepted(rec);
+  runDirectory(cwd, record.id);
+  // Reject hostile state before even creating a lock directory.
+  assertReadableState(cwd);
+  return withLedgerLock(cwd, () => {
+    const state = assertReadableState(cwd);
+    const runs = readRuns(cwd);
+    if (runs.some((r) => r.id === record.id)) throw new ConfigError('a run is already recorded as ' + record.id);
+    const previous = state.run ?? runs.at(-1)?.id;
+    const unfinished = runs.find((r) => retainsCheckout(cwd, r.id, r.status));
+    if (retainsCheckout(cwd, state.run, state.status) || unfinished !== undefined) {
+      throw unfinishedError(previous ?? unfinished?.id ?? '(legacy run)');
+    }
+    const archived = previous === undefined ? [] : migrateLegacy(cwd, previous);
+    if (previous === undefined && LEGACY_ARTIFACTS.some((name) => existsSync(join(cwd, RUN_DIR, name)))) {
+      throw new ConfigError('legacy run artifacts have no owning run; preserve them and repair the ledger before starting');
+    }
+    mkdirSync(runDirectory(cwd, record.id), { recursive: true });
+    writeAtomic(join(runDirectory(cwd, record.id), 'control.json'), JSON.stringify({ run: record.id, pid: process.pid, startedAt: Date.now() - Math.floor(process.uptime() * 1000) }) + '\n');
+    writeAtomic(runsPath(cwd), serialize([...runs, record]));
+    writeState(cwd, 'running', record.id, process.pid);
+    return archived;
+  });
+}
+
+export function assertCanResume(cwd: string, id: string): void {
+  const root = runDirectory(cwd, id), state = assertReadableState(cwd);
+  // Older ledgers can retain several blocked attempts. Only the active pointer
+  // owns the checkout; a historical blocked row cannot strand every resume.
+  if (state.run !== undefined && state.run !== id && (state.status === 'running' || state.status === 'blocked')) throw unfinishedError(state.run);
+  let pid = state.pid;
+  if (state.run === id || state.run === undefined) {
+    const controlPath = join(root, 'control.json');
+    if (existsSync(controlPath)) {
+      try {
+        const control = JSON.parse(readFileSync(controlPath, 'utf8')) as { run?: string; pid?: number };
+        if (control.run !== id || !Number.isSafeInteger(control.pid) || Number(control.pid) < 1) throw new Error('invalid owner');
+        pid = control.pid;
+      } catch { throw new ConfigError('could not read run owner: ' + controlPath); }
+    }
+  }
+  if (state.status === 'running' && pid !== undefined && pid !== process.pid) {
+    try { process.kill(pid, 0); throw new ConfigError('run ' + id + ' is still alive; stop it before resuming'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+  }
+}
+
+/** Legacy resumes migrate their own state; a different live run is never touched. */
+export function prepareResume(cwd: string, id: string): string[] {
+  assertCanResume(cwd, id);
+  return withLedgerLock(cwd, () => {
+    assertCanResume(cwd, id);
+    const state = assertReadableState(cwd);
+    const archived = migrateLegacy(cwd, state.run ?? id);
+    mkdirSync(runDirectory(cwd, id), { recursive: true });
+    writeAtomic(join(runDirectory(cwd, id), 'control.json'), JSON.stringify({ run: id, pid: process.pid, startedAt: Date.now() - Math.floor(process.uptime() * 1000) }) + '\n');
+    const runs = readRuns(cwd);
+    writeAtomic(runsPath(cwd), serialize(runs.map((run) => run.id === id ? { ...run, status: 'running' } : run)));
+    writeState(cwd, 'running', id, process.pid);
+    return archived;
+  });
 }

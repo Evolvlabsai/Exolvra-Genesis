@@ -41,6 +41,10 @@
  * prompt is that a prompt can be talked out of them.
  */
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, existsSync, lstatSync, readdirSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 
 import { ConfigError } from './exit.js';
 import { REDACTED, redactSecrets as redactTokens } from './github.js';
@@ -149,6 +153,20 @@ export const GIT_COMMANDS = Object.freeze({
    * the URL a push result has to name if it is to be true.
    */
   remotePushUrl: Object.freeze(['remote', 'get-url', '--push', '<remote>']),
+  // Bundle operations never resolve a remote or transport URL. Only immutable
+  // absolute filesystem bundle paths and this hidden reference namespace fit.
+  roundReadTree: Object.freeze(['read-tree', 'HEAD']),
+  roundStage: Object.freeze(['add', '--all', '--', '.', ':(exclude).exolvra-genesis']),
+  roundUnstageState: Object.freeze(['rm', '-r', '--cached', '--ignore-unmatch', '--', '.exolvra-genesis', ':(exclude).exolvra-genesis/standards.md', ':(exclude).exolvra-genesis/goals', ':(exclude).exolvra-genesis/map']),
+  roundWriteTree: Object.freeze(['write-tree']),
+  roundCommit: Object.freeze(['commit-tree', '<object-id>', '-m', 'Genesis pinned round tree']),
+  roundRefUpdate: Object.freeze(['update-ref', '<round-ref>', '<new-object>', '<old-object>']),
+  roundBundle: Object.freeze(['bundle', 'create', '<bundle-path>', '<round-ref>']),
+  roundInit: Object.freeze(['init', '--quiet']),
+  roundHeads: Object.freeze(['bundle', 'list-heads', '<bundle-path>']),
+  roundImport: Object.freeze(['bundle', 'unbundle', '<bundle-path>']),
+  roundResolve: Object.freeze(['rev-parse', '--verify', '<object-id>']),
+  roundCheckout: Object.freeze(['checkout', '--quiet', '--detach', '<object-id>']),
 });
 
 /** A key of {@link GIT_COMMANDS}. */
@@ -472,6 +490,11 @@ export const VALUE_TYPES: Readonly<Record<string, (value: string) => string | un
     '<message>': commitMessageFault,
     '<remote>': remoteFault,
     '<pathspec...>': pathspecFault,
+    '<object-id>': value => OBJECT_ID.test(value) ? undefined : 'expected an exact Git object id',
+    '<new-object>': value => OBJECT_ID.test(value) ? undefined : 'expected an exact Git object id or zero id',
+    '<old-object>': value => OBJECT_ID.test(value) ? undefined : 'expected an exact Git object id or zero id',
+    '<round-ref>': value => /^refs\/exolvra\/rounds\/[A-Za-z0-9][\w-]{0,95}\/[A-Za-z0-9][\w-]{0,95}\/[1-9]\d*$/.test(value) ? undefined : 'expected a hidden namespaced round ref',
+    '<bundle-path>': value => isAbsolute(value) && !/[\x00-\x1f]/.test(value) && value.endsWith('.bundle') ? undefined : 'expected an absolute local .bundle path',
   });
 
 /**
@@ -800,6 +823,7 @@ function tryGit(
   ctx: GitContext,
   name: GitCommandName,
   values: Readonly<Record<string, string | readonly string[]>> = {},
+  environment?: NodeJS.ProcessEnv,
 ): GitResult {
   const argv = buildGitArgv(name, values);
   if (NETWORK_COMMANDS.includes(name)) {
@@ -813,7 +837,7 @@ function tryGit(
   const result = spawnSync('git', argv, {
     cwd: ctx.cwd,
     encoding: 'utf8',
-    env: gitEnv(),
+    env: environment === undefined ? gitEnv() : { ...gitEnv(), ...environment },
     shell: false,
     windowsHide: true,
     timeout: timeoutOf(ctx),
@@ -858,8 +882,9 @@ function runGit(
   values: Readonly<Record<string, string | readonly string[]>> = {},
   complaint?: string,
   notes: readonly string[] = [],
+  environment?: NodeJS.ProcessEnv,
 ): GitResult {
-  const result = tryGit(ctx, name, values);
+  const result = tryGit(ctx, name, values, environment);
   if (result.status !== 0) throw gitFailed(result, complaint, notes);
   return result;
 }
@@ -1706,4 +1731,63 @@ export function pushBranch(ctx: GitContext, branch: string): PushResult {
     url: urls.push,
     output: (push.stdout + push.stderr).trim(),
   };
+}
+
+/* Distributed transport: LOCAL content-addressed bundles, never remotes. */
+export interface RoundBundle { sha: string; digest: string; ref: string }
+const ROUND_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/;
+const OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
+export function roundRef(run: string, piece: string, round: number): string {
+  if (!ROUND_ID.test(run) || !ROUND_ID.test(piece) || !Number.isSafeInteger(round) || round < 1) throw new ConfigError('invalid round reference');
+  return `refs/exolvra/rounds/${run}/${piece}/${round}`;
+}
+function bundleGit(cwd: string, name: GitCommandName, values: Record<string, string> = {}, env: NodeJS.ProcessEnv = {}): string {
+  return runGit({ cwd, repo: { defaultBranch: 'HEAD' } }, name, values, 'round git operation failed', [], {
+    ...env, GIT_CONFIG_COUNT: '4', GIT_CONFIG_KEY_0: 'core.hooksPath', GIT_CONFIG_VALUE_0: '',
+    GIT_CONFIG_KEY_1: 'core.autocrlf', GIT_CONFIG_VALUE_1: 'false', GIT_CONFIG_KEY_2: 'core.eol', GIT_CONFIG_VALUE_2: 'lf',
+    GIT_CONFIG_KEY_3: 'core.attributesFile', GIT_CONFIG_VALUE_3: '',
+  }).stdout.trim();
+}
+/** A parentless commit carries the exact tree without history or other rounds. */
+export function exportRoundBundle(cwd: string, output: string, run: string, piece: string, round: number): RoundBundle {
+  const ref = roundRef(run, piece, round), scratch = mkdtempSync(join(tmpdir(), 'genesis-index-'));
+  const indexEnv = { ...process.env, GIT_INDEX_FILE: join(scratch, 'index') };
+  let sha: string | undefined;
+  let created = false;
+  try {
+    bundleGit(cwd, 'roundReadTree', {}, indexEnv);
+    bundleGit(cwd, 'roundStage', {}, indexEnv);
+    // Exclude run state already tracked by an older repository as well.
+    bundleGit(cwd, 'roundUnstageState', {}, indexEnv);
+    const tree = bundleGit(cwd, 'roundWriteTree', {}, indexEnv);
+    sha = bundleGit(cwd, 'roundCommit', { '<object-id>': tree }, {
+      ...indexEnv, GIT_AUTHOR_NAME: COMMIT_IDENTITY.name, GIT_AUTHOR_EMAIL: COMMIT_IDENTITY.email,
+      GIT_COMMITTER_NAME: COMMIT_IDENTITY.name, GIT_COMMITTER_EMAIL: COMMIT_IDENTITY.email,
+      GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
+    });
+    bundleGit(cwd, 'roundRefUpdate', { '<round-ref>': ref, '<new-object>': sha, '<old-object>': '0'.repeat(sha.length) });
+    created = true;
+    bundleGit(cwd, 'roundBundle', { '<bundle-path>': resolve(output), '<round-ref>': ref });
+    return { sha, digest: createHash('sha256').update(readFileSync(output)).digest('hex'), ref };
+  } finally {
+    if (sha !== undefined && created) {
+      // Compare-and-delete cannot remove a ref another owner replaced.
+      try { bundleGit(cwd, 'roundRefUpdate', { '<round-ref>': ref, '<new-object>': '0'.repeat(sha.length), '<old-object>': sha }); } catch { /* Preserve somebody else's reference. */ }
+    }
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+/** Import only the advertised ref into a new, remote-free checkout. */
+export function importRoundBundle(bundle: string, target: string, pin: RoundBundle): void {
+  if (!OBJECT_ID.test(pin.sha) || !/^[a-f0-9]{64}$/.test(pin.digest) || !/^refs\/exolvra\/rounds\/[\w-]+\/[\w-]+\/[1-9]\d*$/.test(pin.ref)) throw new ConfigError('invalid round bundle pin');
+  if (createHash('sha256').update(readFileSync(bundle)).digest('hex') !== pin.digest) throw new ConfigError('round bundle hash mismatch');
+  if (existsSync(target) && (lstatSync(target).isSymbolicLink() || !lstatSync(target).isDirectory() || readdirSync(target).length > 0)) throw new ConfigError('round import requires an empty local directory');
+  mkdirSync(target, { recursive: true });
+  bundleGit(target, 'roundInit');
+  const heads = bundleGit(target, 'roundHeads', { '<bundle-path>': resolve(bundle) });
+  if (heads !== pin.sha + ' ' + pin.ref) throw new ConfigError('round bundle ref or sha mismatch');
+  bundleGit(target, 'roundImport', { '<bundle-path>': resolve(bundle) });
+  const resolved = bundleGit(target, 'roundResolve', { '<object-id>': pin.sha });
+  if (resolved !== pin.sha) throw new ConfigError('round commit sha mismatch');
+  bundleGit(target, 'roundCheckout', { '<object-id>': pin.sha });
 }

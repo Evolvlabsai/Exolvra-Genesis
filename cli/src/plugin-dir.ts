@@ -14,6 +14,7 @@ import { pathKind } from './input.js';
 export interface PluginSources {
   runMd: string;
   interviewMd: string;
+  chartMd: string;
   builderMd: string;
   criticMd: string;
   progressHtml: string;
@@ -37,6 +38,7 @@ export interface PluginSources {
 export const PLUGIN_FILES = {
   runMd: 'commands/run.md',
   interviewMd: 'commands/interview.md',
+  chartMd: 'commands/chart.md',
   builderMd: 'agents/builder.md',
   criticMd: 'agents/critic.md',
   progressHtml: 'templates/progress.html',
@@ -156,6 +158,7 @@ export function loadPluginSources(
         dir,
         runMd: readPluginFile(dir, PLUGIN_FILES.runMd),
         interviewMd: readPluginFile(dir, PLUGIN_FILES.interviewMd),
+        chartMd: readPluginFile(dir, PLUGIN_FILES.chartMd),
         builderMd: readPluginFile(dir, PLUGIN_FILES.builderMd),
         criticMd: readPluginFile(dir, PLUGIN_FILES.criticMd),
         progressHtml: readPluginFile(dir, PLUGIN_FILES.progressHtml),

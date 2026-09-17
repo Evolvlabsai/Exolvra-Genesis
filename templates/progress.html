@@ -55,7 +55,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="20">
+<meta http-equiv="refresh" content="2">
 <title>Exolvra Genesis — live progress</title>
 <style>
   :root {
@@ -230,7 +230,7 @@
   // The bar
   var bar = document.getElementById('bar');
   if (!d.bar || !d.bar.length) {
-    bar.appendChild(el('div', 'empty', 'Not captured yet — artifacts land in .exolvra-genesis/bar/ during Step 1.'));
+    bar.appendChild(el('div', 'empty', 'Not captured yet — artifacts land in this run’s bar/ directory during Step 1.'));
   } else d.bar.forEach(function (b) {
     var row = el('div', 'bar-item');
     row.appendChild(el('code', null, b.name || ''));
@@ -372,12 +372,39 @@
 
   // Footer
   var foot = document.getElementById('foot');
+  if (d.live) {
+    var activity = el('p', d.live.stalled ? 'loss' : d.live.budget_warning ? 'pending' : '');
+    var age = Math.max(0, Math.floor((Date.now() - d.live.last_event_at) / 1000));
+    activity.textContent = (d.live.stalled ? 'STALLED · ' : '') +
+      (d.live.activity || '') + ' · last activity ' + age + 's ago · data as of ' +
+      Math.max(0, Math.floor((Date.now() - d.live.at) / 1000)) + 's ago · $' +
+      Number(d.live.cost_usd || 0).toFixed(2) +
+      (d.live.max_cost_usd == null ? '' : ' / $' + Number(d.live.max_cost_usd).toFixed(2)) +
+      ' reported · tokens ' + Number(d.live.input_tokens || 0) + ' in / ' + Number(d.live.output_tokens || 0) + ' out' +
+      ' · rounds ' + Number(d.live.rounds || 0) + (d.live.max_rounds == null ? '' : ' / ' + Number(d.live.max_rounds));
+    foot.appendChild(activity);
+    if (Array.isArray(d.live.agents) && d.live.agents.length) {
+      var liveAgents = el('table'); liveAgents.className = 'rounds';
+      var liveHead = el('tr');
+      ['Agent', 'Role', 'Piece', 'Age', 'Last event', 'Health'].forEach(function (name) { liveHead.appendChild(el('th', '', name)); });
+      liveAgents.appendChild(liveHead);
+      d.live.agents.forEach(function (agent) {
+        var row = el('tr');
+        [agent.task_id, agent.role, agent.piece || '—', Math.floor(Number(agent.age_ms || 0) / 1000) + 's',
+          Math.floor(Number(agent.last_event_age_ms || 0) / 1000) + 's', agent.stalled ? 'STALLED' : 'open'].forEach(function (value) {
+          row.appendChild(el('td', agent.stalled ? 'loss' : '', String(value)));
+        });
+        liveAgents.appendChild(row);
+      });
+      foot.appendChild(liveAgents);
+    }
+  }
   (d.integrity || []).forEach(function (line) {
     var s = el('span'); s.appendChild(fmt(line));
     foot.appendChild(s); foot.appendChild(document.createTextNode(' '));
   });
   foot.appendChild(document.createTextNode(
-    'Snapshots per round under .exolvra-genesis/runs/. Refreshes every 20s.'));
+    'Snapshots under this run’s snapshots/ directory. Refreshes every 2s.'));
 })();
 </script>
 </body>

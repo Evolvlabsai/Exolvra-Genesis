@@ -1,4 +1,6 @@
 import { resolve } from 'node:path';
+import { coordinatorFlag, coordinatorEnv, createDistributedLead, recordedCoordinator, type DistributedLead } from '../distributed-lead.js';
+import { mkdirSync } from 'node:fs';
 
 import {
   type Budget,
@@ -7,7 +9,12 @@ import {
   createBudget,
   formatUsd,
 } from '../budget.js';
+import { type TraceStore, openTrace } from '../trace-store.js';
+import { toRecord, type BudgetSpendPayload } from '../trace-events.js';
+import { recordPreflight } from '../run-evidence.js';
+import { preflightReceipt, preflightSpendDetail, type ExecutionPreflight } from '../preflight.js';
 import { autoResumeDelayMs, autoResumeLimit } from '../config.js';
+import { waitForRetry, watchRunStop } from '../run-control.js';
 import { ConfigError, EXIT, UsageError } from '../exit.js';
 import { expandHome, pathKind } from '../input.js';
 import {
@@ -45,6 +52,9 @@ import {
   statePath,
   updateRun,
   writeState,
+  prepareResume,
+  runDirectory,
+  assertCanResume,
 } from '../runs-store.js';
 import {
   type SdkMessage,
@@ -52,6 +62,7 @@ import {
   type SessionResult,
   assistantText,
   createSession,
+  preflightExecution,
 } from '../session.js';
 import {
   PROGRAM,
@@ -75,6 +86,10 @@ import {
   outcomeOf,
   progressPage,
   readMarkers,
+  appendTraceEvent,
+  createSubagentTracker,
+  observeSubagentBlocks,
+  type ContentBlock,
 } from './run.js';
 import { cell, mostRecentFirst, relativeTime } from './runs.js';
 
@@ -186,6 +201,7 @@ const jsonFlag: BooleanFlagSpec = {
 };
 
 const flags: FlagSpec[] = [
+  coordinatorFlag,
   directoryFlag,
   jsonFlag,
   maxCostFlag,
@@ -222,7 +238,7 @@ const resumeCommand: Command = {
   ],
   flags,
   argument: runArgument,
-  env: [pluginDirEnv],
+  env: [pluginDirEnv, coordinatorEnv],
   cwdFlag: directoryFlag,
   examples: [
     PROGRAM + ' resume',
@@ -616,6 +632,32 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   const env =
     pluginDir === undefined ? ctx.env : { ...ctx.env, [PLUGIN_DIR_ENV]: pluginDir };
   const sources = closing(() => loadPluginSources(env));
+  closing(() => assertCanResume(cwd, run.id));
+  let preflight: ExecutionPreflight;
+  try {
+    preflight = await preflightExecution({ cwd, sources, models, env, modelSource: 'resume',
+      permissionMode: args.get(permissionModeFlag) ?? 'bypassPermissions', isTTY: interactive,
+      maxBudgetUsd: args.get(maxCostFlag),
+      confirmBypass: () => prompts!.askConfirm('Command execution was refused. Continue this run with bypassPermissions?', io, { initial: false }),
+    });
+  } catch (error) {
+    const receipt = preflightReceipt(error);
+    if (receipt) {
+      // This run already exists: a refused resume still records what its probe
+      // cost, without changing the saved status or claiming a build started.
+      mkdirSync(runDirectory(cwd, run.id), { recursive: true });
+      const failedTrace = openTrace(cwd, run.id, (warning) => ctx.stderr.write(warning + '\n'));
+      try { recordPreflight(cwd, run.id, receipt, failedTrace); } finally { failedTrace.close(); }
+      updateRun(cwd, run.id, { costUsd: (run.costUsd ?? 0) + receipt.costUsd });
+    }
+    if (prompts?.isPromptCancelled(error)) {
+      if (receipt) ctx.stderr.write(preflightSpendDetail(receipt) + '\n');
+      return EXIT.LOSS;
+    }
+    if (framed) prompts?.endRun('Nothing resumed', io);
+    throw error;
+  }
+  prepareResume(cwd, run.id);
 
   const view: Viewport = { tty: ctx.isTTY, width: ctx.width };
   const verbose = args.bool(verboseFlag);
@@ -637,7 +679,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
     framed && prompts !== undefined
       ? prompts.createRunFrame(frameIo, { verbose, progress })
       : undefined;
-  const reporter: Reporter =
+  const baseReporter: Reporter =
     frame ?? createReporter({ json, verbose, stream: out, view });
   const budget: Budget = createBudget({
     ...(args.get(maxRoundsFlag) === undefined
@@ -648,10 +690,33 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
       : { maxCostUsd: args.get(maxCostFlag) as number }),
   });
 
+  // Open the trace store for this run. Warnings degrade gracefully (R6).
+  const trace: TraceStore = openTrace(cwd, run.id, (warning) => {
+    baseReporter.emit({ type: 'notice', level: 'warning', message: warning });
+  });
+  const reporter: Reporter = { emit(event) { baseReporter.emit(event); appendTraceEvent(trace, run.id, event); } };
+  const subagentTracker = createSubagentTracker();
+  recordPreflight(cwd, run.id, preflight, trace);
+  const preflightTrip = budget.addCost(preflight.costUsd);
+
+  // Open the lead process row. A resumed run is owned by a new process with
+  // its own pid, so a run that is started and then resumed has TWO lead rows.
+  const leadTaskId = 'lead-' + run.id + '-' + Date.now();
+  trace.openProcess({
+    runId: run.id,
+    taskId: leadTaskId,
+    role: 'lead',
+    piece: null,
+    round: null,
+    openedAt: Date.now(),
+    pid: process.pid,
+  });
+
   let messages = 0;
   let lastVerdict: string | undefined = run.lastVerdict;
   let stopped: BudgetTrip | undefined;
   let finished = false;
+  let distributed: DistributedLead | undefined;
 
   /** The rounds this run has been judged over, across every turn of it. */
   const totalRounds = (): number => (run.rounds ?? 0) + budget.rounds;
@@ -688,10 +753,15 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
       tripped(trip);
     },
     onMessageEnd: announce,
+    onIntegrity(check, name, passed, detail, piece, round) {
+      if (check === 'gate') trace.append(toRecord({ kind: 'gate_check', piece, round: round ?? undefined, payload: { gate: name, passed, detail } }, { runId: run.id }));
+      else trace.append(toRecord({ kind: 'pin_check', piece, round: round ?? undefined, payload: { pin: name, passed, detail } }, { runId: run.id }));
+      if (!passed) reporter.emit({ type: 'notice', level: 'warning', message: check + ' check failed: ' + name + (detail ? ' (' + detail + ')' : '') });
+    },
   });
 
   const makeSession = (): Session => createSession({
-    prompt: CONTINUE,
+    prompt: CONTINUE + '\nActive run: ' + run.id + '. All run artifacts live under .exolvra-genesis/runs/' + run.id + '/; preserve the run field in state.json.' + (distributed?.directive(sources.runMd) ?? ''),
     sources,
     models,
     cwd,
@@ -701,11 +771,18 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
     // being found to have passed it once the turn is over.
     ...(args.get(maxCostFlag) === undefined
       ? {}
-      : { maxBudgetUsd: args.get(maxCostFlag) as number }),
-    permissionMode: args.get(permissionModeFlag) ?? 'bypassPermissions',
+      : { maxBudgetUsd: Math.max(0, (args.get(maxCostFlag) as number) - budget.costUsd) }),
+    permissionMode: preflight.permissionMode,
+    runId: run.id,
+    trace,
+    budget: () => ({ spentUsd: budget.costUsd, maxCostUsd: args.get(maxCostFlag), rounds: budget.rounds, maxRounds: args.get(maxRoundsFlag) }),
     hooks: {
       onMessage(message: SdkMessage): void {
         if (finished) return;
+        if (message.type === 'assistant' || message.type === 'user') {
+          const content = (message as { message?: { content?: unknown } }).message?.content;
+          if (Array.isArray(content)) observeSubagentBlocks(content as ContentBlock[], subagentTracker, trace, run.id);
+        }
         messages += 1;
         progress.update(
           PROGRESS_MESSAGE +
@@ -718,7 +795,29 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
               ? ''
               : ' · ' + budget.rounds + (budget.rounds === 1 ? ' round' : ' rounds')),
         );
-        if (message.type === 'result') tripped(budget.addCost(message.total_cost_usd));
+        if (message.type === 'result') {
+          tripped(budget.addCost(message.total_cost_usd));
+
+          // Emit budget_spend with real token counts (R5), same rule as run.ts
+          const usage = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+          const spend: BudgetSpendPayload = {
+            attribution: 'session',
+            inputTokens: typeof usage?.input_tokens === 'number' ? usage.input_tokens : 0,
+            outputTokens: typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0,
+            costUsd: message.total_cost_usd,
+          };
+
+          trace.append(
+            toRecord(
+              {
+                kind: 'budget_spend',
+                piece: null,
+                payload: spend,
+              },
+              { runId: run.id },
+            ),
+          );
+        }
         const text = assistantText(message).trim();
         if (text !== '') watcher.read(text);
         else announce();
@@ -747,7 +846,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   // contract a run keeps. It also closes a hole: without it, a `complete` left
   // in the file by an earlier run in this directory would be read as this
   // turn's own verdict.
-  writeState(cwd, 'running');
+  writeState(cwd, 'running', run.id, process.pid);
 
   /*
    * The drive, with in-place recovery from an ABNORMAL end: a stream fault, or
@@ -763,178 +862,222 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   let autoResumes = 0;
   let driveFrom = sessionId;
   let result: SessionResult;
+  let interrupted = false;
+  let releaseStop: (() => void) | undefined;
+  const stopWaiter = new Promise<void>((resolve) => { releaseStop = resolve; });
+  const onInterrupt = (): void => {
+    interrupted = true;
+    void session.interrupt();
+    releaseStop?.();
+  };
+  process.on('SIGINT', onInterrupt);
+  const releaseControl = watchRunStop(cwd, run.id);
   try {
-    for (;;) {
-      result = await session.resume(driveFrom);
-      const abnormal =
-        stopped === undefined &&
-        readState(cwd).status === 'running' &&
-        (result.status === 'error' || result.status === 'complete');
-      if (!abnormal || autoResumes >= autoResumeMax) break;
-      autoResumes += 1;
-      const waitMs = autoResumeDelayMs(autoResumes);
+    try {
+      distributed = createDistributedLead({ root: args.get(coordinatorFlag) ?? args.env(coordinatorEnv) ?? recordedCoordinator(cwd, run.id), cwd, run: run.id, trace, budget, accountedCostUsd: run.distributedCostUsd, maxCostUsd: args.get(maxCostFlag), onTrip: tripped,
+        onFault: reason => { reporter.emit({ type: 'notice', level: 'error', message: 'Distributed transport: ' + reason }); void session.interrupt(); } });
+      if (distributed !== undefined) session = makeSession();
+      for (;;) {
+        if (preflightTrip !== undefined) {
+          stopped = preflightTrip;
+          result = { status: 'stopped', reason: 'max-budget', sessionId, turns: 0, costUsd: 0, text: '', error: preflightTrip.message };
+          break;
+        }
+        result = await session.resume(driveFrom);
+        const abnormal =
+          !interrupted &&
+          stopped === undefined &&
+          readState(cwd).status === 'running' &&
+          (result.status === 'error' || result.status === 'complete');
+        if (!abnormal || autoResumes >= autoResumeMax) break;
+        autoResumes += 1;
+        const waitMs = autoResumeDelayMs(autoResumes);
+        reporter.emit({
+          type: 'notice',
+          level: 'warning',
+          message:
+            (result.status === 'error'
+              ? 'the session ended with a fault'
+              : 'the session ended with the run unfinished') +
+            ' — resuming automatically (attempt ' +
+            autoResumes +
+            ' of ' +
+            autoResumeMax +
+            (waitMs > 0 ? ', after ' + Math.round(waitMs / 1000) + 's' : '') +
+            ')',
+        });
+        // An instant retry asks the same overloaded servers the same question
+        // in the same moment; the wait is what makes the attempt a real one.
+        await waitForRetry(waitMs, stopWaiter);
+        if (interrupted) {
+          result = { ...result, status: 'stopped', reason: 'interrupted', error: 'the run was interrupted' };
+          break;
+        }
+        if (stopped !== undefined) break;
+        driveFrom = result.sessionId ?? driveFrom;
+        session = makeSession();
+      }
+    } catch (error) {
+      /*
+       * A fault, and the turn is over however it is about to be reported.
+       *
+       * Both files are settled here for the reason they are settled everywhere
+       * else: a turn that could not start leaves the ledger and the Stop hook's
+       * tripwire saying the run is still going, and no later command repairs
+       * either. `blocked` keeps the session it already had, so the run stays
+       * resumable once whatever stopped it is fixed.
+       */
+      await distributed?.settle('lead faulted');
+      finished = true;
+      if (frame !== undefined) progress.suspend();
+      else progress.fail('The run stopped');
+      try {
+        updateRun(cwd, run.id, {
+          status: BLOCKED.ledger,
+          rounds: totalRounds(),
+          costUsd: (run.costUsd ?? 0) + budget.costUsd,
+          ...(distributed === undefined ? {} : { distributedCostUsd: distributed.costUsd }),
+          ...(lastVerdict === undefined ? {} : { lastVerdict }),
+        });
+      } catch {
+        // Bookkeeping about a turn that already failed; the fault below is what
+        // the user has to act on.
+      }
+      writeState(cwd, BLOCKED.ledger, run.id);
+      // Close the lead process row with 'failed' since this is an SDK fault.
+      trace.closeProcess(leadTaskId, 'failed');
+      trace.finalize('failed');
+      trace.close();
+      frame?.close('Blocked — ' + totalRounds() + ' rounds');
+      throw error;
+    }
+    const distributedSettled = await distributed?.settle('resumed lead settled');
+    finished = true;
+
+    // Inside a frame the closing rail is the last word; on its own the progress
+    // line is, and says so.
+    if (frame !== undefined) progress.suspend();
+    else if (result.status === 'complete' && stopped === undefined) {
+      progress.done('Session finished');
+    } else progress.fail('Session stopped');
+
+    watcher.flushPlan();
+    // The plan before the closing notices, so those are news on their own lines
+    // rather than rows squeezed into a box that would have to cut them.
+    frame?.showPlan();
+
+    /*
+     * What this turn came to — settled by the mapping a run uses, not by a second
+     * one that happens to live here.
+     *
+     * A session that returns normally has ended its *turn*; whether the *run* is
+     * finished is what `.exolvra-genesis/state.json` says, and only that. Reading the
+     * turn's own status as the run's would record a resumed run that still has
+     * work left as `complete` — and a complete run is one nothing will ever pick
+     * up again, so the same command that printed "resume it with…" would refuse
+     * that exact command a moment later.
+     */
+    const settledState = readState(cwd).status;
+    const settled = distributedSettled === false ? BLOCKED : stopped === undefined
+      ? settledState === 'blocked' ? BLOCKED : outcomeOf(result, settledState === 'complete')
+      : STOPPED;
+    const won = settled === WON;
+    const costUsd = (run.costUsd ?? 0) + budget.costUsd;
+
+    if (stopped !== undefined) {
       reporter.emit({
         type: 'notice',
-        level: 'warning',
+        level: 'note',
+        message: 'resume it again with the limit raised, or without it',
+      });
+    } else if (result.status !== 'complete') {
+      reporter.emit({
+        type: 'notice',
+        level: 'error',
         message:
-          (result.status === 'error'
-            ? 'the session ended with a fault'
-            : 'the session ended with the run unfinished') +
-          ' — resuming automatically (attempt ' +
-          autoResumes +
-          ' of ' +
-          autoResumeMax +
-          (waitMs > 0 ? ', after ' + Math.round(waitMs / 1000) + 's' : '') +
+          'the resumed run did not finish: ' +
+          printable(result.error ?? 'no reason was reported') +
+          (result.reason === 'max-turns'
+            ? ' — raise the limit with --max-turns and resume it again'
+            : ''),
+      });
+    } else if (!won) {
+      reporter.emit({
+        type: 'notice',
+        level: 'error',
+        message:
+          'the session ended with the run still unfinished (' +
+          statePath(cwd) +
+          ': ' +
+          readState(cwd).detail +
           ')',
       });
-      // An instant retry asks the same overloaded servers the same question
-      // in the same moment; the wait is what makes the attempt a real one.
-      if (waitMs > 0) await new Promise((settle) => setTimeout(settle, waitMs));
-      if (stopped !== undefined) break;
-      driveFrom = result.sessionId ?? driveFrom;
-      session = makeSession();
     }
-  } catch (error) {
-    /*
-     * A fault, and the turn is over however it is about to be reported.
-     *
-     * Both files are settled here for the reason they are settled everywhere
-     * else: a turn that could not start leaves the ledger and the Stop hook's
-     * tripwire saying the run is still going, and no later command repairs
-     * either. `blocked` keeps the session it already had, so the run stays
-     * resumable once whatever stopped it is fixed.
-     */
-    finished = true;
-    if (frame !== undefined) progress.suspend();
-    else progress.fail('The run stopped');
+    if (!won) {
+      reporter.emit({
+        type: 'notice',
+        level: 'note',
+        message: 'resume it with: ' + PROGRAM + ' resume ' + run.id,
+        // A command: never folded, so it copies clean.
+        keepWhole: true,
+      });
+    }
+
+    reporter.emit({
+      type: 'run_finished',
+      status: settled.reported,
+      rounds: totalRounds(),
+      costUsd,
+      ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
+    });
+
+    // The ledger is bookkeeping about work that has already happened, so a ledger
+    // that cannot be written is said out loud and does not become the verdict on
+    // the work itself.
     try {
       updateRun(cwd, run.id, {
-        status: BLOCKED.ledger,
+        status: settled.ledger,
+        sessionId: result.sessionId ?? run.sessionId,
+        costUsd,
         rounds: totalRounds(),
-        costUsd: (run.costUsd ?? 0) + budget.costUsd,
+        ...(distributed === undefined ? {} : { distributedCostUsd: distributed.costUsd }),
         ...(lastVerdict === undefined ? {} : { lastVerdict }),
       });
-    } catch {
-      // Bookkeeping about a turn that already failed; the fault below is what
-      // the user has to act on.
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      err.write('note: the ledger was not updated\n');
+      for (const line of reason.split('\n')) err.write('  ' + line + '\n');
     }
-    writeState(cwd, BLOCKED.ledger);
-    frame?.close('Blocked — ' + totalRounds() + ' rounds');
-    throw error;
+    writeState(cwd, settled.ledger, run.id);
+
+    // One closing rail, on every ending there is.
+    frame?.close(
+      [
+        won
+          ? 'Won'
+          : settled.reported === 'blocked'
+            ? 'Blocked'
+            : settled.reported === 'loss'
+              ? 'Lost'
+              : 'Stopped',
+        '—',
+        totalRounds() + (totalRounds() === 1 ? ' round' : ' rounds'),
+        'for ' + formatUsd(costUsd),
+      ].join(' '),
+    );
+
+    // Close the lead process row explicitly. This is done BEFORE finalize so
+    // that the lead's outcome is recorded specifically as 'complete'.
+    trace.closeProcess(leadTaskId, 'complete');
+    // Finalize and close the trace
+    trace.finalize('complete');
+    trace.close();
+
+    // A session that ended is not a run that won. What the run says about itself
+    // is what decides that, and it says it in the file it has always said it in.
+    return settled.exit;
+  } finally {
+    releaseControl();
+    process.removeListener('SIGINT', onInterrupt);
   }
-  finished = true;
-
-  // Inside a frame the closing rail is the last word; on its own the progress
-  // line is, and says so.
-  if (frame !== undefined) progress.suspend();
-  else if (result.status === 'complete' && stopped === undefined) {
-    progress.done('Session finished');
-  } else progress.fail('Session stopped');
-
-  watcher.flushPlan();
-  // The plan before the closing notices, so those are news on their own lines
-  // rather than rows squeezed into a box that would have to cut them.
-  frame?.showPlan();
-
-  /*
-   * What this turn came to — settled by the mapping a run uses, not by a second
-   * one that happens to live here.
-   *
-   * A session that returns normally has ended its *turn*; whether the *run* is
-   * finished is what `.exolvra-genesis/state.json` says, and only that. Reading the
-   * turn's own status as the run's would record a resumed run that still has
-   * work left as `complete` — and a complete run is one nothing will ever pick
-   * up again, so the same command that printed "resume it with…" would refuse
-   * that exact command a moment later.
-   */
-  const settled = stopped === undefined
-    ? outcomeOf(result, readState(cwd).status === 'complete')
-    : STOPPED;
-  const won = settled === WON;
-  const costUsd = (run.costUsd ?? 0) + budget.costUsd;
-
-  if (stopped !== undefined) {
-    reporter.emit({
-      type: 'notice',
-      level: 'note',
-      message: 'resume it again with the limit raised, or without it',
-    });
-  } else if (result.status !== 'complete') {
-    reporter.emit({
-      type: 'notice',
-      level: 'error',
-      message:
-        'the resumed run did not finish: ' +
-        printable(result.error ?? 'no reason was reported') +
-        (result.reason === 'max-turns'
-          ? ' — raise the limit with --max-turns and resume it again'
-          : ''),
-    });
-  } else if (!won) {
-    reporter.emit({
-      type: 'notice',
-      level: 'error',
-      message:
-        'the session ended with the run still unfinished (' +
-        statePath(cwd) +
-        ': ' +
-        readState(cwd).detail +
-        ')',
-    });
-  }
-  if (!won) {
-    reporter.emit({
-      type: 'notice',
-      level: 'note',
-      message: 'resume it with: ' + PROGRAM + ' resume ' + run.id,
-      // A command: never folded, so it copies clean.
-      keepWhole: true,
-    });
-  }
-
-  reporter.emit({
-    type: 'run_finished',
-    status: settled.reported,
-    rounds: totalRounds(),
-    costUsd,
-    ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
-  });
-
-  // The ledger is bookkeeping about work that has already happened, so a ledger
-  // that cannot be written is said out loud and does not become the verdict on
-  // the work itself.
-  try {
-    updateRun(cwd, run.id, {
-      status: settled.ledger,
-      sessionId: result.sessionId ?? run.sessionId,
-      costUsd,
-      rounds: totalRounds(),
-      ...(lastVerdict === undefined ? {} : { lastVerdict }),
-    });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    err.write('note: the ledger was not updated\n');
-    for (const line of reason.split('\n')) err.write('  ' + line + '\n');
-  }
-  if (settled.ledger !== 'complete') writeState(cwd, settled.ledger);
-
-  // One closing rail, on every ending there is.
-  frame?.close(
-    [
-      won
-        ? 'Won'
-        : settled.reported === 'blocked'
-          ? 'Blocked'
-          : settled.reported === 'loss'
-            ? 'Lost'
-            : 'Stopped',
-      '—',
-      totalRounds() + (totalRounds() === 1 ? ' round' : ' rounds'),
-      'for ' + formatUsd(costUsd),
-    ].join(' '),
-  );
-
-  // A session that ended is not a run that won. What the run says about itself
-  // is what decides that, and it says it in the file it has always said it in.
-  return settled.exit;
 }
