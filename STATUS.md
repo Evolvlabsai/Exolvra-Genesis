@@ -11,7 +11,7 @@ ci: failing
 # Exolvra Genesis status
 
 ## Latest
-- 2026-09-18: 0.13.0 released — the split; this repo keeps the loop, the plane moved to Evolvlabsai/Exolvra-Plane — cc7e95f, tag v0.13.0, on npm
+- 2026-09-18: 0.13.0 released, the split: this repo keeps the loop, the plane is Evolvlabsai/Exolvra-Plane — cc7e95f, v0.13.0, npm
 
 ## Blocked
 - None.
@@ -23,7 +23,7 @@ ci: failing
 - None.
 
 ## Next
-- Fix Ubuntu CI: cli/test/chart.test.js "new chart fans out actual research sessions" hangs on Linux, later tests cancelled; red since 2026-09-17
+- Fix Ubuntu CI: chart.test.js research fan-out test hangs on Linux and cancels the rest; red since 2026-09-17
 - Fix Ubuntu flake: trace-liveness "process start time is stable" failed once on 2026-09-18 (fb4e298); passes on Windows
 - No new public features planned; loop fixes land here first and merge into the plane (git merge public/main)
 
@@ -32,7 +32,7 @@ ci: failing
 - 2026-09-18: READMEs caught up with 0.12.0 — 25d9aab — merged
 - 2026-09-18: 0.12.0 durable panel execution: detached commands, persistent queue, --concurrency — fb4e298 — released, npm
 - 2026-09-18: preflight probe budget $0.10 → $0.50; verified marker passes on SDK turn limit — fb4e298 — released
-- 2026-09-18: first real browser-driven run (wordstats, 7-test bar): WIN in 2 rounds, $2.37, survived a panel kill — evidence in run r-20260918-1441-7b7de2
+- 2026-09-18: first real browser-driven run (wordstats): WIN in 2 rounds, $2.37, survived a panel kill — run r-20260918-1441-7b7de2
 - 2026-09-17: 0.11.0 run detail leads with outcome/activity/blocker/next; source-linked evidence — 6f0b7a0 — merged
 - 2026-09-17: 0.10.0 ten specs complete and the shared control panel — 13f5c76 — merged
 
