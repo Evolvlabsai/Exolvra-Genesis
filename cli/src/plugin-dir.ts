@@ -18,7 +18,6 @@ export interface PluginSources {
   builderMd: string;
   criticMd: string;
   progressHtml: string;
-  fleetHtml: string;
   dir: string;
 }
 
@@ -42,7 +41,6 @@ export const PLUGIN_FILES = {
   builderMd: 'agents/builder.md',
   criticMd: 'agents/critic.md',
   progressHtml: 'templates/progress.html',
-  fleetHtml: 'templates/fleet.html',
 } as const;
 
 /**
@@ -162,7 +160,6 @@ export function loadPluginSources(
         builderMd: readPluginFile(dir, PLUGIN_FILES.builderMd),
         criticMd: readPluginFile(dir, PLUGIN_FILES.criticMd),
         progressHtml: readPluginFile(dir, PLUGIN_FILES.progressHtml),
-        fleetHtml: readPluginFile(dir, PLUGIN_FILES.fleetHtml),
       };
     }
     misses.push(`  ${dir} (${unusable})`);

@@ -248,7 +248,6 @@ test('C5: malformed plugin markdown is a complaint with its remedy under it', ()
   writeFileSync(join(dir, 'commands', 'interview.md'), '---\nname: i\n---\n\nBody.\n', 'utf8');
   writeFileSync(join(dir, 'commands', 'chart.md'), '---\nname: chart\n---\n\nBody.\n', 'utf8');
   writeFileSync(join(dir, 'templates', 'progress.html'), '<!doctype html>\n', 'utf8');
-  writeFileSync(join(dir, 'templates', 'fleet.html'), '<!doctype html>\n', 'utf8');
   // The one that is wrong: an agent file with no name.
   writeFileSync(join(dir, 'agents', 'builder.md'), '---\ndescription: b\n---\n\nBody.\n', 'utf8');
   writeFileSync(join(dir, 'agents', 'critic.md'), '---\nname: c\ndescription: d\n---\n\nBody.\n', 'utf8');

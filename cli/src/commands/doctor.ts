@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { delimiter, join } from 'node:path';
 import { loadConfig } from '../config.js';
 import { EXIT } from '../exit.js';
-import { redactSecrets } from '../github.js';
+import { redactSecrets } from '../redact.js';
 import { loadPluginSources } from '../plugin-dir.js';
 import { type Command, type BooleanFlagSpec, type ValueFlagSpec, directoryValue, parseInvocation, registerCommand } from '../registry.js';
 import { readRuns, readState } from '../runs-store.js';

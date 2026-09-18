@@ -334,23 +334,18 @@ test('an unknown command exits 2 with a gh-shaped error naming what exists', () 
   const listed = lines.slice(5).filter((line) => line !== '');
   assert.deepEqual(listed, [
     '  chart',
-    '  daemon',
-    '  dashboard',
     '  doctor',
     '  gate',
     '  goals',
     '  interview',
     '  plan',
-    '  queue',
     '  resume',
-    '  round',
     '  run',
     '  runs',
     '  standards',
     '  status',
     '  stop',
     '  trace',
-    '  work',
   ]);
 
   // And the pin is the registry's own list, in the registry's own order, so

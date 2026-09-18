@@ -6,17 +6,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
 import { chartDirectory, chartFiles, frontier, mapCleared, newChartClaim, parseMap, readMap, staleChartClaim, validateChartUpdate, withClaim, writeMap, writeChartPrototype } from '../dist/chart.js';
-import { assertGitHubChartClaim, claimGitHubTicket, heartbeatGitHubChartClaim, maintainGitHubChartClaim, readGitHubMap, reclaimableGitHubTickets, releaseGitHubChartClaim, writeGitHubMap } from '../dist/chart-github.js';
-import { createGitHubClient } from '../dist/github.js';
 import { parseChartHandoff, runChart, validateChartHandoff } from '../dist/commands/chart.js';
-import { chartGitHubFake } from './chart-github-fake.js';
 import { fakeTty, pipes, ENTER, CTRL_C } from './tty.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const TEMP = [];
 after(() => { for (const dir of TEMP) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 }); });
 const temp = () => { const dir = mkdtempSync(join(tmpdir(), 'genesis-chart-')); TEMP.push(dir); return dir; };
-const REPO = { owner: 'owner', name: 'project' };
 const mapText = (fog = 'Which interfaces remain uncertain?') => '# Issue runner map\n\n## Destination\nA build-ready runner spec\n\n## Notes\nUse the existing loop.\n\n## Decisions so far\nnone\n\n## Not yet specified\n' + fog + '\n\n## Out of scope\n- Third-party trackers\n';
 const ticket = (name = 'Find repository limits', type = 'research', extra = {}) => '# ' + name + '\n\nType: ' + type + '\nStatus: ' + (extra.status ?? 'open') + '\nMode: ' + (type === 'research' ? 'AFK' : 'HITL') + '\nBlocked by: ' + (extra.blockedBy ?? 'none') + '\nClaim: ' + (extra.claim ?? 'none') + '\n\n## Question\nWhich repository limits apply?\n\n## Answer\n' + (extra.answer ?? 'none') + '\n';
 const files = () => ({ 'MAP.md': mapText(), 'tickets/research.md': ticket(), 'tickets/choose.md': ticket('Choose limits', 'grilling', { blockedBy: 'research' }) });
@@ -96,7 +92,7 @@ test('status reads current local files offline, emitting TSV or JSON without the
   const cwd = temp(); writeMap(cwd, files());
   const out = pipes(); assert.equal(await runChart(['status'], context(cwd, out)), 0);
   assert.match(out.raw(), /Choose limits\tgrilling\tblocked\tFind repository limits/);
-  const json = pipes(); assert.equal(await runChart(['status', '--json', '--tracker', 'local'], context(cwd, json, { EXOLVRA_GENESIS_REPOS: 'ignored/because-local' })), 0);
+  const json = pipes(); assert.equal(await runChart(['status', '--json'], context(cwd, json)), 0);
   assert.equal(JSON.parse(json.raw()).frontier[0].name, 'Find repository limits');
 });
 
@@ -153,74 +149,6 @@ test('cleared-map spec handoff writes only after actual approval', async () => {
     assert.equal(readFileSync(join(cwd, 'specs/runner.md'), 'utf8'), '# Runner\nApproved design.');
     assert.match(io.raw(), /exolvra-genesis run/);
   } finally { stop(); }
-});
-
-test('GitHub chart uses native parent, blocking and assignee APIs over HTTP', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    let remote = await writeGitHubMap(client, REPO, files());
-    const research = remote.tickets.get('research'), choice = remote.tickets.get('choose');
-    assert.deepEqual(fake.children.get(remote.issue.number), [research.number, choice.number]);
-    assert.deepEqual(fake.blockers.get(choice.number), [research.number]);
-    assert.equal(fake.requests.find((r) => r.path.endsWith('/sub_issues') && r.method === 'POST').body.sub_issue_id, research.id);
-    remote = await claimGitHubTicket(client, REPO, remote, remote.map.tickets[0], 'chart-runner');
-    assert.equal(remote.map.tickets[0].claim, 'chart-runner');
-    assert.equal(frontier(remote.map).length, 0);
-    await assert.rejects(claimGitHubTicket(client, REPO, remote, remote.map.tickets[0], 'another-runner'), /already claimed/);
-    await client.removeAssignees(REPO, research.number, ['chart-runner']);
-    remote = await readGitHubMap(client, REPO);
-    const map = mapText().replace('## Decisions so far\nnone', '## Decisions so far\n- [Find repository limits](tickets/research.md): Limits verified.');
-    remote = await writeGitHubMap(client, REPO, { 'MAP.md': map, 'tickets/research.md': ticket('Find repository limits', 'research', { status: 'closed', answer: 'Limits verified.' }) }, remote);
-    assert.deepEqual(frontier(remote.map).map((t) => t.name), ['Choose limits']);
-    assert.ok(remote.issue.body.includes('[Find repository limits](' + research.url + ')'));
-    assert.equal(fake.issues.get(research.number).state, 'closed');
-    assert.ok(!fake.issues.get(research.number).body.includes('Claim:'));
-  } finally { await fake.close(); }
-});
-
-test('GitHub mode defaults from runner configuration and preserves native human edits', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    const remote = await writeGitHubMap(client, REPO, files());
-    fake.issues.get(remote.tickets.get('research').number).assignees = [{ login: 'a-human' }];
-    const io = pipes();
-    assert.equal(await runChart(['status', '--json'], context(temp(), io, { GITHUB_TOKEN: fake.token, GITHUB_API_URL: fake.origin, EXOLVRA_GENESIS_REPOS: 'owner/project' })), 0);
-    assert.equal(JSON.parse(io.raw()).tracker, 'github');
-    assert.equal(JSON.parse(io.raw()).frontier.length, 0);
-    await assert.rejects(writeGitHubMap(client, REPO, { 'MAP.md': mapText('none') }, remote), /changed during this session/);
-  } finally { await fake.close(); }
-});
-
-test('GitHub partial errors name already-created artifacts and never retry', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    fake.fail((method, path) => method === 'POST' && path.endsWith('/sub_issues'));
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    await assert.rejects(writeGitHubMap(client, REPO, files()), /may have saved part[\s\S]*Created:/);
-    assert.equal(fake.requests.filter((r) => r.method === 'POST' && r.path.endsWith('/sub_issues')).length, 1);
-    assert.equal(fake.issues.size, 2);
-    assert.equal([...fake.issues.values()].some((i) => i.labels.includes('exolvra:ready')), false);
-  } finally { await fake.close(); }
-});
-
-test('ready issues require human label authorization and inherit standing validation', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    await writeGitHubMap(client, REPO, { 'MAP.md': mapText('none') });
-    const cwd = temp(), io = fakeTty();
-    const stop = answerWhen(io, 'authorize the exolvra:ready label?', 'y' + ENTER);
-    try {
-      assert.equal(await runChart([], context(cwd, io, { GITHUB_TOKEN: fake.token, GITHUB_API_URL: fake.origin, EXOLVRA_GENESIS_REPOS: 'owner/project' }), { io, transport: sdk([proposal({ handoff: { kind: 'issues', issues: [{ title: 'Implement the approved runner', body: '# Build-ready input\nUse existing loop.' }] } })]) }), 0);
-      const issue = [...fake.issues.values()].find((i) => i.title === 'Implement the approved runner');
-      assert.deepEqual(issue.labels, ['exolvra:ready']);
-      const created = fake.requests.find((r) => r.method === 'POST' && r.body?.title === issue.title);
-      assert.deepEqual(created.body.labels, []);
-      assert.ok(fake.requests.some((r) => r.path.endsWith('/' + issue.number + '/labels')));
-    } finally { stop(); }
-  } finally { await fake.close(); }
 });
 
 test('new chart fans out actual research sessions and merges only their disjoint tickets', async () => {
@@ -319,80 +247,4 @@ test('prototype writes are scoped, cannot follow an artifact-directory junction,
   symlinkSync(outside, join(chartDirectory(linked), 'artifacts'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => writeChartPrototype(linked, 'choice', '<h1>No</h1>'), /symbolic links/);
   assert.deepEqual(readdirSync(outside), []);
-});
-
-test('failed GitHub claim read-back releases only the just-assigned login', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    const remote = await writeGitHubMap(client, REPO, files());
-    const research = remote.tickets.get('research');
-    fake.fail((method, path) => method === 'GET' && path.endsWith('/issues/' + research.number) && fake.issues.get(research.number).assignees.length > 0);
-    await assert.rejects(claimGitHubTicket(client, REPO, remote, remote.map.tickets.find((t) => t.id === 'research'), 'chart-runner'));
-    assert.deepEqual(fake.issues.get(research.number).assignees, []);
-    assert.ok(fake.requests.some((r) => r.method === 'DELETE' && r.path.endsWith('/assignees')));
-  } finally { await fake.close(); }
-});
-
-test('GitHub chart heartbeats fence expired takeovers and ignore forged or foreign claims', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    let remote = await writeGitHubMap(client, REPO, files());
-    remote = await claimGitHubTicket(client, REPO, remote, remote.map.tickets[0], 'chart-runner');
-    const original = remote.lease, comment = fake.comments.get(original.comment);
-    const old = new Date(Date.now() - 2 * 86400_000).toISOString();
-    comment.body = comment.body.replace(/"heartbeat":"[^"]+"/, '"heartbeat":"' + old + '"'); comment.updated_at = old;
-    fake.seedComment(original.issue, comment.body, 'stranger', old);
-    assert.deepEqual([...await reclaimableGitHubTickets(client, REPO, remote, 'chart-runner')], ['research']);
-    const replacement = await claimGitHubTicket(client, REPO, remote, remote.map.tickets[0], 'chart-runner');
-    assert.notEqual(replacement.lease.token, original.token);
-    assert.match(fake.comments.get(original.comment).body, /reclaimed/);
-    await assert.rejects(assertGitHubChartClaim(client, REPO, original), /claim changed/);
-    await assert.rejects(releaseGitHubChartClaim(client, REPO, original), /claim changed/);
-    await assert.rejects(heartbeatGitHubChartClaim(client, REPO, original), /claim changed/);
-    assert.deepEqual(fake.issues.get(original.issue).assignees, [{ login: 'chart-runner' }]);
-    assert.equal((await reclaimableGitHubTickets(client, REPO, replacement, 'chart-runner')).size, 0);
-    await heartbeatGitHubChartClaim(client, REPO, replacement.lease);
-    await releaseGitHubChartClaim(client, REPO, replacement.lease);
-    assert.deepEqual(fake.issues.get(original.issue).assignees, []);
-    assert.match(fake.comments.get(original.comment).body, /"status":"released"/);
-    fake.issues.get(original.issue).assignees = [{ login: 'human' }];
-    remote = await readGitHubMap(client, REPO);
-    assert.equal((await reclaimableGitHubTickets(client, REPO, remote, 'chart-runner')).size, 0);
-    assert.ok(!fake.requests.some((r) => r.path.endsWith('/labels')));
-  } finally { await fake.close(); }
-});
-
-test('GitHub claim monitor renews while idle and refuses saves after heartbeat failure', async () => {
-  const fake = await chartGitHubFake();
-  let monitor;
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    let remote = await writeGitHubMap(client, REPO, files());
-    remote = await claimGitHubTicket(client, REPO, remote, remote.map.tickets[0], 'chart-runner');
-    monitor = maintainGitHubChartClaim(client, REPO, { ...remote.lease, ttlMs: 30 });
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    assert.ok(fake.requests.some((r) => r.method === 'PATCH' && r.path.endsWith('/issues/comments/' + remote.lease.comment)));
-    fake.fail((method, path) => method === 'PATCH' && path.includes('/issues/comments/'));
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    await assert.rejects(monitor.check(), /Injected upstream failure/);
-  } finally { await monitor?.close(); await fake.close(); }
-});
-
-test('unattended chart recovers only expired authored claims and settles its sticky receipt', async () => {
-  const fake = await chartGitHubFake();
-  try {
-    const client = createGitHubClient({ apiUrl: fake.origin, token: fake.token });
-    let remote = await writeGitHubMap(client, REPO, files());
-    remote = await claimGitHubTicket(client, REPO, remote, remote.map.tickets[0], 'chart-runner');
-    const comment = fake.comments.get(remote.lease.comment), old = new Date(Date.now() - 2 * 86400_000).toISOString();
-    comment.body = comment.body.replace(/"heartbeat":"[^"]+"/, '"heartbeat":"' + old + '"'); comment.updated_at = old;
-    const io = pipes(), cwd = temp(), env = { GITHUB_API_URL: fake.origin, GITHUB_TOKEN: fake.token, EXOLVRA_GENESIS_REPOS: 'owner/project' };
-    const answer = proposal({ files: { 'MAP.md': indexed('Find repository limits', 'research'), 'tickets/research.md': ticket('Find repository limits', 'research', { status: 'closed', claim: 'chart-runner', answer: 'Limits verified.' }) } });
-    assert.equal(await runChart(['--afk', '--claim-ttl', '24h'], context(cwd, io, env), { transport: sdk([answer]) }), 0);
-    assert.equal(fake.issues.get(remote.lease.issue).state, 'closed');
-    assert.deepEqual(fake.issues.get(remote.lease.issue).assignees, []);
-    assert.match(comment.body, /"status":"released"/);
-  } finally { await fake.close(); }
 });

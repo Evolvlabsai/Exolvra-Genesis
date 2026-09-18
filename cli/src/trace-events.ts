@@ -13,7 +13,7 @@
  */
 
 import type { TraceRecord, TraceProcess } from './trace-store.js';
-import { redactSecrets } from './github.js';
+import { redactSecrets } from './redact.js';
 import { plainText } from './usage.js';
 
 /* -------------------------------------------------------------------------- */

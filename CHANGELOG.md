@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.13.0 — 2026-09-18
+
+- The split. This repository and package now hold the loop only: the plugin
+  and the commands that run it (`interview`, `plan`, `run`, `resume`, `runs`,
+  `status`, `stop`, `trace`, `doctor`, `standards`, `goals`, local `chart`,
+  `gate`). The GitHub issue runner (`work`, `queue`, the fleet page), the
+  control panel (`dashboard`), distributed rounds (`daemon`, `round`,
+  `--coordinator`, `EXOLVRA_GENESIS_COORDINATOR`), GitHub-backed charts
+  (`--tracker github`, `--repo`, `--map`, `--runner-login`, `--claim-ttl`,
+  the ready-issue handoff) and their specifications, protocol models,
+  deployment examples and Dockerfile moved to the private Exolvra control
+  plane. Versions up to 0.12.0 still carry them; this is a breaking change
+  for anyone using those commands from this package.
+- Nothing in the package reaches the network except the Agent SDK. The
+  source gate that used to exempt one module now exempts none. Secret
+  redaction lives in `redact.ts`.
+- The environment help no longer describes `GITHUB_TOKEN`, `GITHUB_API_URL`,
+  `EXOLVRA_GENESIS_REPOS`, `EXOLVRA_GENESIS_RUNNER_LOGIN` or
+  `EXOLVRA_GENESIS_COORDINATOR`.
+
 ## 0.12.0 — 2026-09-18
 
 - Commands the control panel starts are detached processes with their own

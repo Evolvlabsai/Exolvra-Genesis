@@ -1,5 +1,5 @@
 import { ConfigError, UsageError } from './exit.js';
-import { redactSecrets } from './github.js';
+import { redactSecrets } from './redact.js';
 import { plainText } from './usage.js';
 
 /**

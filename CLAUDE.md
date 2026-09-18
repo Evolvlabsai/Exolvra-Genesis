@@ -51,11 +51,13 @@ The CLI (`cli/src/`) mirrors the plugin without duplicating it:
 - `registry.ts` — commands self-register from `src/commands/` (zero-diff `cli.ts`); every value-taking flag must declare a validator or the registry-driven gate test fails it. Nothing reaches the SDK or filesystem unvalidated, and the agent's answer is validated too (never exit 0 having written nothing).
 - `commands/` — `run` (interactive clack startup on TTY, review pause, budget guards, SIGINT settling, `--json` NDJSON with a fixed 4-key summary), `plan` (Steps 0–2 preview), `runs`/`resume` (lock-serialized ledger in `.exolvra-genesis/runs.json`), `interview` (multi-turn conversation loop), `standards` (check/init for the repo's standing bar in `.exolvra-genesis/standards.md` — committed, unlike run state), `goals` (list/show/new for reusable jobs in `.exolvra-genesis/goals/`, resolvable by bare name in `run`/`plan`).
 - Rendering: display-width-aware tables (CJK/emoji/ZWJ correct), TSV when piped vs aligned on TTY, model output treated as untrusted renderer input, `--verbose` byte-verbatim. Lead model is pinned by exact id; builder/critic by model *family* — an SDK constraint, stated honestly in help.
-- `chart.ts` / `chart-github.ts` — editable map validation, guarded persistence, native issue relationships and claims. `commands/chart.ts` handles read-only SDK conversations, research transport and approved spec/goal/ready-issue handoffs. `.exolvra-genesis/map/` is versioned intent; chart writes never modify `.gitignore` or standards.
+- `chart.ts` — editable local map validation and guarded persistence. `commands/chart.ts` handles read-only SDK conversations, parallel research and approved spec/goal handoffs. `.exolvra-genesis/map/` is versioned intent; chart writes never modify `.gitignore` or standards.
 - `trace-store.ts` / `trace-events.ts` — append-only events, process liveness and observed model usage. `trace` reads this record; `status` and `stop` expose current run activity and controlled settling.
-- `panel-*.ts` / `commands/dashboard.ts` — browser transport for the existing CLI, with project registration, read-only evidence, owned command jobs and shared-key browser sessions. `cli/panel/` contains the dependency-free frontend, copied into `dist/panel/` at build time. Only `panel-server.ts` owns the inbound HTTP listener; outbound GitHub access stays in its existing boundary. Deployment examples live in `docs/control-panel.md` and `examples/control-panel.*`.
 - `preflight.ts` — a bounded SDK execution probe before build sessions. Permission evidence must come from the actual matching tool result; observed spend and tokens count toward the run.
-- `ownership.ts` / `consistency.ts` — filesystem ownership checks and conservative checks for contradictions in submitted evidence. Distributed rounds use `distributed*.ts` and the same markdown builder/critic prompts over authenticated shared storage; see `docs/distributed-rounds.md` and the protocol models in `docs/models/`.
+- `ownership.ts` / `consistency.ts` — filesystem ownership checks and conservative checks for contradictions in submitted evidence.
+- `redact.ts` — the one secret-redaction helper every surface writes through. Nothing in `src/` reaches the network; the gate test enforces it with no exemptions.
+
+**What is not here, on purpose.** Since 0.13.0 the GitHub issue runner (`work`, `queue`, the fleet page), the control panel (`dashboard`), distributed rounds (`daemon`, `round`, `--coordinator`) and GitHub-backed charts live in the private Exolvra control plane repository (`Evolvlabsai/Exolvra-Plane`), which is a superset of this one with shared history. Loop fixes flow public → private by `git merge`. Do not add them back here; if a change needs the plane, it belongs there.
 
 Run state lives under `.exolvra-genesis/` in the *target* project (gitignored): `state.json` (status, active run id and live owner pid), `runs.json` (CLI ledger), and `runs/<run-id>/` (bar, tasks, progress.html, snapshots and builders). Startup archives settled legacy artifacts; unfinished runs must be resumed or stopped before another starts. Every exit path settles `state.json` and the ledger truthfully — a run that never started must not say `running`.
 
@@ -63,11 +65,12 @@ Supporting files:
 
 - `hooks/verification-gate.example.json` — opt-in Stop hook; blocks session end while `state.json` says `running`. Its grep must match how `run.md` writes the file.
 - `hooks/bar-integrity-gate.example.json` — opt-in PreToolUse(Task) hook; blocks subagent dispatch if `bar/bar.sha256` no longer verifies.
+- `hooks/ownership-gate.example.json` — opt-in PreToolUse/PostToolUse/Stop hooks around builder dispatch; they call `exolvra-genesis gate`, so the CLI must be on PATH.
 - `cli/cli-spec.md` — the spec the CLI was built and judged against (C1–C5, R1–R16 across its addenda). Treat as read-only history; extend with addenda rather than rewriting.
 
 ## Versioning
 
-One version everywhere, moved together: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (two fields), `CHANGELOG.md`, `cli/package.json`, and the root package entries in `cli/package-lock.json`. Update the pinned version in `examples/issue-runner.yml` too. Repo URLs point at `Evolvlabsai/Exolvra-Genesis`; the manual/issues links live in `MANUAL_URL` in `cli/src/usage.ts`.
+One version everywhere, moved together: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (two fields), `CHANGELOG.md`, `cli/package.json`, and the root package entries in `cli/package-lock.json`. Repo URLs point at `Evolvlabsai/Exolvra-Genesis`; the manual/issues links live in `MANUAL_URL` in `cli/src/usage.ts`.
 
 ## Design invariants
 

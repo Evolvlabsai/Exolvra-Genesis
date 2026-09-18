@@ -103,7 +103,7 @@ test('headless denial never prompts and retains the probe receipt', async () => 
       '  reported probe spend: $0.012000; tokens: 51 input, 12 output',
       '  an unattended build must execute its verification commands',
       '  retry with --permission-mode bypassPermissions',
-      '  usage: exolvra-genesis <run | resume | work> [arguments] --permission-mode bypassPermissions',
+      '  usage: exolvra-genesis <run | resume> [arguments] --permission-mode bypassPermissions',
     ].join('\n'));
     assert.equal(error.preflight.costUsd, 0.012);
     return true;

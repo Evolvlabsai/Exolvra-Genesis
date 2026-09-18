@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { readProcesses, readTrace, deriveLiveness, type TraceStore, type TraceRecord } from './trace-store.js';
 import { readRuns, readState, runDirectory, writeAtomic, settledIssueRun } from './runs-store.js';
 import { toRecord } from './trace-events.js';
-import { redactSecrets } from './github.js';
+import { redactSecrets } from './redact.js';
 import { plainText } from './usage.js';
 
 export type LivePhase = 'lead' | 'builder' | 'critic' | 'verification';

@@ -135,7 +135,6 @@ test('the published package carries the plugin markdown and loads it', () => {
     'dist/plugin/agents/builder.md',
     'dist/plugin/agents/critic.md',
     'dist/plugin/templates/progress.html',
-    'dist/plugin/templates/fleet.html',
   ]) {
     assert.ok(
       files.includes(relative),
@@ -228,7 +227,7 @@ test('the published package carries the plugin markdown and loads it', () => {
     '  reported probe spend: $0.000000; tokens: 0 input, 0 output',
     '  an unattended build must execute its verification commands',
     '  retry with --permission-mode bypassPermissions',
-    '  usage: exolvra-genesis <run | resume | work> [arguments] --permission-mode bypassPermissions',
+    '  usage: exolvra-genesis <run | resume> [arguments] --permission-mode bypassPermissions',
     '', '',
   ].join('\n'));
   assert.deepEqual(readdirSync(workdir), [], 'permission refusal must precede all build artifacts');
@@ -291,9 +290,7 @@ test('the packed file list is what the package means to ship', () => {
   const listed = JSON.parse(npm(['pack', '--dry-run', '--ignore-scripts', '--json']));
   const names = (listed[0]?.files ?? []).map((entry) => entry.path);
   assert.ok(names.includes('package.json'));
-  for (const asset of ['index.html', 'styles.css', 'app.js']) {
-    assert.ok(names.includes('dist/panel/' + asset), 'control panel asset missing from package: ' + asset);
-  }
+  assert.ok(!names.some((name) => name.startsWith('dist/panel/')), 'the control panel belongs to the private plane package');
   assert.ok(
     names.includes('README.md'),
     'the registry page reads the package root README; a tarball without one ships a blank page',

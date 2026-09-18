@@ -1,6 +1,6 @@
 {
   "name": "exolvra-genesis",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Run an Exolvra Genesis loop from the terminal: builders iterate against blind critics until the work beats a captured bar twice in a row.",
   "license": "MIT",
   "type": "module",
@@ -15,8 +15,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && npm run build:plugin && npm run build:panel",
-    "build:panel": "node scripts/build-panel.mjs",
+    "build": "tsc -p tsconfig.json && npm run build:plugin",
     "build:plugin": "node -e \"import('./dist/plugin-dir.js').then(async (m) => { const { cpSync, existsSync, mkdirSync } = await import('node:fs'); const { dirname, join, resolve } = await import('node:path'); const from = resolve('..'); const to = resolve('dist', m.PACKAGED_PLUGIN_SUBDIR); for (const rel of Object.values(m.PLUGIN_FILES)) { const src = join(from, rel); if (!existsSync(src)) continue; const dst = join(to, rel); mkdirSync(dirname(dst), { recursive: true }); cpSync(src, dst); } const license = join(from, 'LICENSE'); if (existsSync(license)) cpSync(license, resolve('LICENSE')); })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepack": "npm run build",

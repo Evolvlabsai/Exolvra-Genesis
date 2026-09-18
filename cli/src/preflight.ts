@@ -62,6 +62,6 @@ export function executionPreflightError(result: ExecutionProbeResult, preflight:
     result.mode === 'bypassPermissions'
       ? '  bypassPermissions is already selected; check project rules and the command environment'
       : '  retry with --permission-mode bypassPermissions',
-    '  usage: exolvra-genesis <run | resume | work> [arguments] --permission-mode bypassPermissions',
+    '  usage: exolvra-genesis <run | resume> [arguments] --permission-mode bypassPermissions',
   ].join('\n'), preflight);
 }

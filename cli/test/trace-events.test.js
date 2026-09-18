@@ -8,7 +8,7 @@ import {
   openProcessRecord,
   closeProcessOutcome,
 } from '../dist/trace-events.js';
-import { REDACTED } from '../dist/github.js';
+import { REDACTED } from '../dist/redact.js';
 import * as traceEventsModule from '../dist/trace-events.js';
 
 /**

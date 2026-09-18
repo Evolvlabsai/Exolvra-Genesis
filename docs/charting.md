@@ -9,7 +9,7 @@ continue with `interview` or `run` directly.
 Prototype tickets save self-contained HTML mockups under
 `.exolvra-genesis/map/artifacts/` and print the path to open. The human must try
 the artifact and give feedback before the ticket can close. Each revision has
-a new filename, including when the decision ticket itself lives in GitHub.
+a new filename.
 
 `chart status` reads the files fresh and prints the destination, frontier,
 blocked or claimed tickets, and fog. Tables are aligned on a terminal and TSV
@@ -64,57 +64,17 @@ and human confirmation. Claims on another host require verification there.
 Charting does not modify `.gitignore`: if your repository ignores the whole
 state directory, update its ignore rule deliberately so the map is versioned.
 
-## GitHub maps
-
-Use `chart --tracker github --repo owner/repository`. When the issue runner's
-`EXOLVRA_GENESIS_REPOS` names one repository, GitHub becomes the default;
-multiple configured repositories require `--repo`. `--tracker local` still
-selects the local map, and no mode migrates existing decisions automatically.
-Use `--map <issue-number>` when the repository has multiple map issues.
-
-Authentication and `GITHUB_API_URL` are shared with the runner. The token needs
-issue read/write permission; the GitHub installation must support native child
-issues and blocking relationships. If GitHub cannot identify an installation
-token, `--runner-login` or `EXOLVRA_GENESIS_RUNNER_LOGIN` names its account using
-the runner's identity checks; GitHub must actually accept that account as the
-assignee before research starts. A map carries `exolvra:map`. Its child
-issues carry `exolvra:decide` and one decision type label. Their native state,
-dependencies and assignees override any stale body metadata each time they are
-read. Planning issues never receive the runner's ready label.
-
-The implementation uses GitHub's [sub-issue API](https://docs.github.com/en/rest/issues/sub-issues)
-and [dependency API](https://docs.github.com/en/rest/issues/issue-dependencies),
-through the same network module as the runner. A GitHub claim is checked before
-assignment and read back afterwards. GitHub offers no atomic compare-and-set
-for this assignment: use distinct accounts for independent workers and avoid
-starting simultaneous sessions for one ticket. An authenticated sticky comment
-records each session's token and UTC heartbeat, renewed at least once a minute
-while the session runs or waits for human input. `--claim-ttl` uses the runner's
-duration format and default of 24 hours (minimum one minute, maximum 30 days).
-A later session under the same resolved runner account can reclaim that
-account's expired claim and records the takeover. A new token prevents the old
-session from saving or releasing the replacement claim. Heartbeat failures
-prevent a later save. Only comments authored by that account attest its claim;
-another user's copied marker never authorizes recovery.
-
-Assignments without authenticated heartbeat evidence, including legacy claims
-and claims belonging to another account, need human recovery.
-`--release-claim` asks the human to verify abandonment and approve release.
-
-Remote edits are re-read before saving. Network failures report already-created
-issues and partial state; there are no automatic retries or deletion of the
-human's work. Inspect the map and repair relationships before continuing.
-
 ## Approved handoff
 
 When every ticket is closed and the fog is empty, run `chart` to review the
-chosen destination: a complete spec, named goal files, or runner issues. Each
-artifact is checked against repository standards and displayed in full.
-Nothing outside the map is written before terminal approval. Existing files
-are never overwritten. A spec or goal handoff prints the exact run command;
-the issue handoff explicitly asks permission to apply `exolvra:ready`, creates
-each issue first without the label, then labels it. A partial failure cannot
-make an uncreated issue ready.
+chosen destination: a complete spec or named goal files. Each artifact is
+checked against repository standards and displayed in full. Nothing outside
+the map is written before terminal approval. Existing files are never
+overwritten. A spec or goal handoff prints the exact run command.
+
+GitHub-backed maps (native child issues, dependencies and assignees) and the
+ready-issue handoff belong to the Exolvra control plane, which is not part of
+this repository.
 
 The conversation is maintained in `commands/chart.md`; the CLI provides
 transport, validation, claims and approval. Charting is adapted from Matt

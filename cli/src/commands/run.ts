@@ -2,8 +2,6 @@ import { join, resolve } from 'node:path';
 import { reportSections } from '../consistency.js';
 
 import { renderLeadPrompt } from '../agents.js';
-import { coordinatorFlag, coordinatorEnv, createDistributedLead, type DistributedLead } from '../distributed-lead.js';
-import { RoundCoordinator } from '../distributed.js';
 import { type TraceStore, openTrace } from '../trace-store.js';
 import { toRecord, type BudgetSpendPayload, type BuilderRoundEndedPayload, type RunObservation } from '../trace-events.js';
 import { recordPreflight } from '../run-evidence.js';
@@ -575,7 +573,6 @@ const noConfigFlag: BooleanFlagSpec = {
 };
 
 const flags: FlagSpec[] = [
-  coordinatorFlag,
   autoFlag,
   modelFlag,
   builderModelFlag,
@@ -626,7 +623,7 @@ const runCommand: Command = {
   ],
   flags,
   argument: runArgument,
-  env: [pluginDirEnv, coordinatorEnv],
+  env: [pluginDirEnv],
   cwdFlag: directoryFlag,
   sections: [
     {
@@ -1282,8 +1279,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   }
 
   const cwd = args.cwd;
-  const coordinatorRoot = args.get(coordinatorFlag) ?? args.env(coordinatorEnv);
-  if (coordinatorRoot !== undefined) new RoundCoordinator(coordinatorRoot);
   const json = args.bool(jsonFlag);
   const verbose = args.bool(verboseFlag);
   const noConfig = args.bool(noConfigFlag);
@@ -1498,7 +1493,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   let interruptions = 0;
   let session: Session | undefined;
   let activeTurn: Promise<SessionResult> | undefined;
-  let distributed: DistributedLead | undefined;
   let releaseStop: (() => void) | undefined;
 
   // The provider bills the lead query, which may span many nested rounds.
@@ -1687,7 +1681,7 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     resumeFrom?: string,
   ): Promise<SessionResult | undefined> => {
     const current = createSession({
-      prompt: prompt + (distributed?.directive(sources.runMd) ?? ''),
+      prompt,
       sources,
       models,
       cwd,
@@ -1762,7 +1756,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
         status: outcome.ledger,
         rounds: budget.rounds,
         costUsd: budget.costUsd,
-        ...(distributed === undefined ? {} : { distributedCostUsd: distributed.costUsd }),
         ...(sessionId === undefined ? {} : { sessionId }),
         ...(lastVerdict === undefined ? {} : { lastVerdict }),
       });
@@ -1781,7 +1774,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
       try { await activeTurn; }
       catch (error) { outcome = BLOCKED; detail = error instanceof Error ? error.message : String(error); }
     }
-    if (await distributed?.settle('lead settled ' + outcome.ledger) === false) outcome = BLOCKED;
     finished = true;
     // Inside a frame the closing rail is what says how it went, so the progress
     // line only has to get out of the way; on its own it is the last word, and
@@ -1889,8 +1881,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
   try {
     // Review is a pause the loaded markdown already knows how to take: without
     // the word that skips it, the run stops once the bar is picked and waits.
-    distributed = createDistributedLead({ root: coordinatorRoot, cwd, run: runId, trace, budget, maxCostUsd: args.get(maxCostFlag), onTrip: tripped,
-      onFault: reason => { reporter.emit({ type: 'notice', level: 'error', message: 'Distributed transport: ' + reason }); void session?.interrupt(); } });
     if (preflightTrip !== undefined) return await finish(STOPPED, preflightTrip.message);
     let result = await drain(prompt(auto ? AUTO_PREFIX + ' ' + argument : argument));
 
@@ -2047,7 +2037,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
      * it, and stays resumable.
      */
     if (!finished) {
-      await distributed?.settle('lead faulted');
       finished = true;
       progress.suspend();
       record(BLOCKED);
@@ -2072,7 +2061,6 @@ async function runRun(argv: string[], ctx: Ctx): Promise<number> {
     }
     throw error;
   } finally {
-    await distributed?.settle('lead stopped');
     releaseControl();
     process.removeListener('SIGINT', onInterrupt);
     if (!finished) progress.fail('Run stopped');

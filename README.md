@@ -131,7 +131,7 @@ the location), so the two cannot drift.
 
 An unattended build executes commands and therefore uses
 `--permission-mode bypassPermissions` by default; the first execution refusal
-names that flag and its remedy. `run`, `resume`, and `work` first make a bounded
+names that flag and its remedy. `run` and `resume` first make a bounded
 SDK permission probe (requesting a provider budget of at most $0.50 across
 attempts; an Opus first turn alone costs about $0.16), and record the actual
 command result and spend; `plan` keeps its cautious default and skips the probe.
@@ -145,15 +145,6 @@ npm install -g exolvra-genesis
 ```
 
 or build it from the repo: `cd cli && npm install && npm run build && npm link`.
-
-Start the control panel with `exolvra-genesis dashboard --open`.
-It shows operations, projects, runs, agent definitions, live events and usage,
-and can launch builds and plans or stop and resume existing runs. Commands it
-starts continue if the panel restarts, and paid commands wait in a persistent
-queue (`--concurrency` sets how many run at once). See the
-[control panel guide](docs/control-panel.md) for setup and controls, including
-shared access, HTTPS proxies, containers and service deployments. Shared members
-sign in with a workspace access key; deployment settings are configurable.
 
 Core commands:
 
@@ -187,22 +178,6 @@ Core commands:
   <name>` scaffolds one through the interview. `run <name>` then runs it by
   name: an existing path wins first, a goal name second, and anything else
   is an inline goal, with an ambiguous token refused while naming both.
-- `exolvra-genesis work` makes one unattended pass over GitHub issues a
-  maintainer labelled `exolvra:ready`: claim one, run the loop against the
-  issue as the spec, and end with evidence — a pull request on a win, a
-  draft PR carrying the open question on a block, a triage comment naming
-  exactly what is missing when nothing checkable can be derived. Humans
-  keep every merge decision. Every write requires a resolvable identity
-  (`--runner-login` for tokens GitHub will not name), secrets pasted into
-  issues render `[redacted]` everywhere — branch names included — and
-  `--dry-run` shows the whole plan while writing nothing.
-- `exolvra-genesis queue` lists eligible and in-flight issues across the
-  allowlisted repos, and `queue --fleet` renders the fleet page. Both are
-  read-only. `examples/issue-runner.yml` is the copy-one-file GitHub
-  Actions adoption path.
-
-![The issue runner: a maintainer labels an issue exolvra:ready; the runner proves its identity to GitHub, claims the issue, snapshots and pins it, and runs the loop with the issue as the spec. Nothing checkable becomes a triage comment naming what is missing, until a maintainer answers and re-adds ready; a win becomes a pushed branch and a pull request at exolvra:review, merged only by a human; a block or budget stop becomes a draft PR stating what a human must decide](docs/issue-runner.svg)
-
 `--model` pins the lead by exact model id. `--builder-model` and
 `--critic-model` take a model *family* (`opus`, `sonnet`, `haiku`, or
 `inherit`), because the SDK pins subagents to a family rather than a version,
@@ -219,19 +194,15 @@ one unnecessary.
 questions into a persistent decision map. `chart status` shows its frontier
 and remaining fog; `chart "Ticket name"` resolves one question. Human tickets
 require a live exchange. Independent research can run in parallel, and a
-cleared map hands off a spec, named goals, or ready-labeled runner issues only
-after approval. Local maps are editable markdown; GitHub mode uses native
-child issues, dependencies and assignees. See [the charting guide](docs/charting.md)
-and [the issue-runner dogfood map](.exolvra-genesis/map/MAP.md).
+cleared map hands off a spec or named goals only after approval. Maps are
+editable markdown, versioned beside the code. See
+[the charting guide](docs/charting.md).
 
 `exolvra-genesis trace <run-id>` reads the run's events and model spend.
-Local session totals and distributed round costs retain exact provider
-receipts; nested local piece/round dollar splits are shown as unavailable.
-`status` reports active runs, `stop` requests a graceful stop, and
-`doctor --read-only` checks local execution prerequisites without contacting
-the provider. `run --coordinator <shared-directory>` opts into distributed
-rounds with isolated worker checkouts and explicit file ownership. See the
-[distributed-rounds guide](docs/distributed-rounds.md) for worker setup and the
+Session totals retain exact provider receipts; nested piece/round dollar
+splits are shown as unavailable. `status` reports active runs, `stop`
+requests a graceful stop, and `doctor --read-only` checks local execution
+prerequisites without contacting the provider. See the
 [run-operations guide](docs/run-operations.md) for live evidence, inactivity
 thresholds and stopping runs.
 
@@ -287,8 +258,8 @@ are off by default and nothing depends on them.
 
 ## What it is not
 
-- **Not a framework.** The plugin is three commands, three agents, and two
-  page templates: plain Markdown with no config file, no state database, and
+- **Not a framework.** The plugin is three commands, three agents, and one
+  page template: plain Markdown with no config file, no state database, and
   no required MCP servers, small enough to read in an afternoon. The CLI is a
   companion rather than a wrapper. It loads that same Markdown instead of
   reimplementing the loop, and if the two could ever drift, the design is
@@ -311,6 +282,12 @@ graded on trust.
 discipline this repo excerpts, inside the full platform. Every phase is
 walked, every unknown sits in a register, and readiness is computed, not
 felt.*
+
+The parts of Genesis that operate the loop at scale — the GitHub issue
+runner that works `exolvra:ready` issues into pull requests, the control
+panel, distributed builder rounds across machines, and GitHub-backed decision
+maps — are part of that platform, not of this repository. Versions up to
+0.12.0 on npm still carry them.
 
 [Exolvra OS](https://exolvra.ai) applies the same discipline to the whole
 life of an application. Specs are approved at doors and recorded immutably,

@@ -125,6 +125,15 @@ runner and may ship first.
   one-ticket-per-session rule.
 - `bars/cli-ux/` for every new CLI surface (`chart`, `chart status`), and
   the interview frames for the grilling sessions.
-- `docs/specs/issue-runner-spec.md` — the shared label namespace, claim
-  protocol, and network module the GitHub mode rides on.
+- The issue-runner spec — the shared label namespace, claim protocol, and
+  network module the GitHub mode rides on.
 - The dogfooded map from R10, as the livability proof.
+
+## Addendum A — Split (0.13.0, 2026-09-18)
+
+The GitHub tracker (native child issues, dependencies, assignees, heartbeat
+claims, `--tracker github`, `--repo`, `--map`, `--runner-login`,
+`--claim-ttl`) and the ready-issue handoff moved to the private Exolvra
+control plane together with the issue runner they ride on. This repository
+keeps local Markdown maps, claims, parallel research, prototypes, and spec and
+goal handoffs. The requirements above stand as written for the plane.

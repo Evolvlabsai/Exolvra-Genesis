@@ -1,5 +1,4 @@
 import { resolve } from 'node:path';
-import { coordinatorFlag, coordinatorEnv, createDistributedLead, recordedCoordinator, type DistributedLead } from '../distributed-lead.js';
 import { mkdirSync } from 'node:fs';
 
 import {
@@ -201,7 +200,6 @@ const jsonFlag: BooleanFlagSpec = {
 };
 
 const flags: FlagSpec[] = [
-  coordinatorFlag,
   directoryFlag,
   jsonFlag,
   maxCostFlag,
@@ -238,7 +236,7 @@ const resumeCommand: Command = {
   ],
   flags,
   argument: runArgument,
-  env: [pluginDirEnv, coordinatorEnv],
+  env: [pluginDirEnv],
   cwdFlag: directoryFlag,
   examples: [
     PROGRAM + ' resume',
@@ -716,7 +714,6 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   let lastVerdict: string | undefined = run.lastVerdict;
   let stopped: BudgetTrip | undefined;
   let finished = false;
-  let distributed: DistributedLead | undefined;
 
   /** The rounds this run has been judged over, across every turn of it. */
   const totalRounds = (): number => (run.rounds ?? 0) + budget.rounds;
@@ -761,7 +758,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   });
 
   const makeSession = (): Session => createSession({
-    prompt: CONTINUE + '\nActive run: ' + run.id + '. All run artifacts live under .exolvra-genesis/runs/' + run.id + '/; preserve the run field in state.json.' + (distributed?.directive(sources.runMd) ?? ''),
+    prompt: CONTINUE + '\nActive run: ' + run.id + '. All run artifacts live under .exolvra-genesis/runs/' + run.id + '/; preserve the run field in state.json.',
     sources,
     models,
     cwd,
@@ -874,9 +871,6 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
   const releaseControl = watchRunStop(cwd, run.id);
   try {
     try {
-      distributed = createDistributedLead({ root: args.get(coordinatorFlag) ?? args.env(coordinatorEnv) ?? recordedCoordinator(cwd, run.id), cwd, run: run.id, trace, budget, accountedCostUsd: run.distributedCostUsd, maxCostUsd: args.get(maxCostFlag), onTrip: tripped,
-        onFault: reason => { reporter.emit({ type: 'notice', level: 'error', message: 'Distributed transport: ' + reason }); void session.interrupt(); } });
-      if (distributed !== undefined) session = makeSession();
       for (;;) {
         if (preflightTrip !== undefined) {
           stopped = preflightTrip;
@@ -927,7 +921,6 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
        * either. `blocked` keeps the session it already had, so the run stays
        * resumable once whatever stopped it is fixed.
        */
-      await distributed?.settle('lead faulted');
       finished = true;
       if (frame !== undefined) progress.suspend();
       else progress.fail('The run stopped');
@@ -936,7 +929,6 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
           status: BLOCKED.ledger,
           rounds: totalRounds(),
           costUsd: (run.costUsd ?? 0) + budget.costUsd,
-          ...(distributed === undefined ? {} : { distributedCostUsd: distributed.costUsd }),
           ...(lastVerdict === undefined ? {} : { lastVerdict }),
         });
       } catch {
@@ -951,7 +943,6 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
       frame?.close('Blocked — ' + totalRounds() + ' rounds');
       throw error;
     }
-    const distributedSettled = await distributed?.settle('resumed lead settled');
     finished = true;
 
     // Inside a frame the closing rail is the last word; on its own the progress
@@ -978,7 +969,7 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
      * that exact command a moment later.
      */
     const settledState = readState(cwd).status;
-    const settled = distributedSettled === false ? BLOCKED : stopped === undefined
+    const settled = stopped === undefined
       ? settledState === 'blocked' ? BLOCKED : outcomeOf(result, settledState === 'complete')
       : STOPPED;
     const won = settled === WON;
@@ -1040,7 +1031,6 @@ async function runResume(argv: string[], ctx: Ctx): Promise<number> {
         sessionId: result.sessionId ?? run.sessionId,
         costUsd,
         rounds: totalRounds(),
-        ...(distributed === undefined ? {} : { distributedCostUsd: distributed.costUsd }),
         ...(lastVerdict === undefined ? {} : { lastVerdict }),
       });
     } catch (error) {

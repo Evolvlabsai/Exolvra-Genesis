@@ -171,22 +171,11 @@ test('C3: the built output does not inline the plugin markdown', () => {
 });
 
 /**
- * The one module allowed to reach the network.
- *
- * C2 of `docs/specs/issue-runner-spec.md` amends this gate deliberately and
- * narrowly. The CLI has to talk to the GitHub REST API, so "no fetch anywhere
- * in `src/`" becomes "no fetch outside `src/github.ts`" — the boundary moves
- * from *nothing* to *one file*, and stays mechanically enforced either way. A
- * request that grows in a second module is what this catches, and a critic
- * reading the gate can see the whole of the exemption on one line.
+ * Nothing in `src/` reaches the network. The loop talks to the provider
+ * through the Agent SDK and to nothing else; the GitHub issue runner and the
+ * control panel, which do, live in the private plane package with their own
+ * gates. No exemption, no boundary module: a fetch anywhere in `src/` fails.
  */
-const NETWORK_MODULE = join(SRC, 'github.ts');
-// control-panel-spec.md allows one inbound loopback listener. It does not
-// authorize another outbound client; only this exact server import is exempt.
-const PANEL_SERVER_MODULE = join(SRC, 'panel-server.ts');
-const PANEL_SERVER_IMPORT = /^import \{ createServer, type IncomingMessage, type ServerResponse \} from 'node:http';\r?$/m;
-
-/** Reaching the network: banned in every source file but {@link NETWORK_MODULE}. */
 const NETWORK_PATTERNS = [
   /\bfetch\s*\(/,
   /\bXMLHttpRequest\b/,
@@ -196,43 +185,25 @@ const NETWORK_PATTERNS = [
   /from\s+['"](node:)?(net|dgram|http|https)['"]/,
 ];
 
-/**
- * The single thing the network module is exempted for: the platform's own
- * fetch, which is what C2 says GitHub access uses. The exemption is not "this
- * file may do anything" — a socket opened by hand, or a client library pulled
- * in, is refused there exactly as it is everywhere else.
- */
-const PERMITTED_AT_THE_BOUNDARY = [/\bfetch\s*\(/];
-
-/** Banned in every source file, the network module included. */
+/** Banned in every source file. */
 const BANNED_EVERYWHERE = [
   /\b(axios|node-fetch|undici|got)\b/,
   /\btelemetry\b/i,
   /\banalytics\b/i,
 ];
 
-const permitted = (pattern) =>
-  PERMITTED_AT_THE_BOUNDARY.some((allowed) => String(allowed) === String(pattern));
-
 /** How `text` at `path` breaks the gate, or `undefined` when it does not. */
 function networkViolation(path, text) {
-  if (path === PANEL_SERVER_MODULE) text = text.replace(PANEL_SERVER_IMPORT, '');
   for (const pattern of BANNED_EVERYWHERE) {
     if (pattern.test(text)) return 'matches a banned pattern: ' + pattern;
   }
   for (const pattern of NETWORK_PATTERNS) {
-    if (!pattern.test(text)) continue;
-    if (path !== NETWORK_MODULE) {
-      return 'reaches the network outside src/github.ts: ' + pattern;
-    }
-    if (!permitted(pattern)) {
-      return 'the network module reaches the network with more than fetch: ' + pattern;
-    }
+    if (pattern.test(text)) return 'reaches the network: ' + pattern;
   }
   return undefined;
 }
 
-test('C4/C2: network access lives in one module, and telemetry in none', () => {
+test('C4/C2: nothing in src/ reaches the network, and telemetry is in none', () => {
   for (const file of SOURCE_FILES) {
     assert.equal(
       networkViolation(file.path, file.text),
@@ -247,49 +218,13 @@ test('C4/C2: the check that guards the boundary rejects what the boundary forbid
   // rather than assumed — the same way the G2 guard above is. Each line below
   // is one step from a line that passes.
   const elsewhere = join(SRC, 'commands', 'run.ts');
-
-  assert.equal(networkViolation(PANEL_SERVER_MODULE, "import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';"), undefined);
-  assert.notEqual(networkViolation(PANEL_SERVER_MODULE, "import { request } from 'node:http';"), undefined);
-  assert.notEqual(networkViolation(PANEL_SERVER_MODULE, 'await fetch(url);'), undefined);
-  assert.notEqual(networkViolation(elsewhere, "import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';"), undefined);
-
-  assert.notEqual(
-    networkViolation(elsewhere, 'const r = await fetch(url);'),
-    undefined,
-    'a fetch planted in another module was accepted',
-  );
-  assert.notEqual(
-    networkViolation(elsewhere, "import { request } from 'node:https';"),
-    undefined,
-    'an https import planted in another module was accepted',
-  );
-  assert.equal(
-    networkViolation(NETWORK_MODULE, 'const r = await fetch(url);'),
-    undefined,
-    'the one module allowed to fetch was refused for fetching',
-  );
-  assert.notEqual(
-    networkViolation(NETWORK_MODULE, "import { createConnection } from 'node:net';"),
-    undefined,
-    'the network module was allowed a socket, which C2 does not exempt',
-  );
-  assert.notEqual(
-    networkViolation(NETWORK_MODULE, "import got from 'got';"),
-    undefined,
-    'the network module was allowed a client library, which G3 forbids anywhere',
-  );
-  assert.notEqual(
-    networkViolation(NETWORK_MODULE, 'const telemetry = true;'),
-    undefined,
-    'the network module was allowed telemetry, which is banned everywhere',
-  );
-
-  // And the module really is the file the exemption names, so a rename cannot
-  // leave the exemption pointing at nothing while the suite still passes.
-  assert.ok(
-    SOURCE_FILES.some((file) => file.path === NETWORK_MODULE),
-    'src/github.ts is the exempted module and must exist',
-  );
+  assert.equal(networkViolation(elsewhere, "import { readFileSync } from 'node:fs';"), undefined);
+  assert.notEqual(networkViolation(elsewhere, 'const r = await fetch(url);'), undefined, 'a planted fetch was accepted');
+  assert.notEqual(networkViolation(elsewhere, "import { request } from 'node:https';"), undefined, 'a planted https import was accepted');
+  assert.notEqual(networkViolation(elsewhere, "import { createServer } from 'node:http';"), undefined, 'a planted http server was accepted');
+  assert.notEqual(networkViolation(elsewhere, "import { createConnection } from 'node:net';"), undefined, 'a planted socket was accepted');
+  assert.notEqual(networkViolation(elsewhere, "import got from 'got';"), undefined, 'a client library was accepted');
+  assert.notEqual(networkViolation(elsewhere, 'const telemetry = true;'), undefined, 'telemetry was accepted');
 });
 
 test('C5: every command writes through the context, so its output is counted', () => {
@@ -300,12 +235,7 @@ test('C5: every command writes through the context, so its output is counted', (
   const entry = join(SRC, 'cli.ts');
   for (const file of SOURCE_FILES) {
     if (file.path === entry) continue;
-    // The child launcher bridges its own display pipes after the panel exits;
-    // it does not print a parent command result. All actual command output,
-    // including dashboard startup, still goes through ctx.stdout/stderr.
-    const text = file.path === join(SRC, 'panel-jobs.ts')
-      ? file.text.replace(/const LAUNCHER = `[\s\S]*?`;/, '')
-      : file.text;
+    const text = file.text;
     for (const pattern of [/\bconsole\.\w+\s*\(/, /\bprocess\.(stdout|stderr)\b/]) {
       assert.ok(
         !pattern.test(text),

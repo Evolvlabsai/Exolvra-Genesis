@@ -25,9 +25,9 @@ cap triggers a warning; normal run budget guards still enforce the cap.
 Provider spend is recorded when reported, so it can lag work in progress.
 Local session totals are exact at the provider-reported scope. Claude Agent
 SDK 0.1.77 does not reliably attribute those dollars to nested piece/round
-queries, so their dollar splits are unavailable. Distributed round queries
-report exact piece/round spend. Retries retain each attempt's receipt;
-unattributed costs are never displayed as zero or estimated splits.
+queries, so their dollar splits are unavailable. Retries retain each
+attempt's receipt; unattributed costs are never displayed as zero or estimated
+splits.
 
 Missing or damaged trace data falls back to the last written run record and
 is labeled accordingly. An open process record alone does not prove a
@@ -56,9 +56,8 @@ running so an operator can inspect it or request a stop.
 ## Stopping and checking the environment
 
 `stop <run-id>` requests a graceful stop and waits up to 15 seconds for the
-state and run ledger to settle. `--grace-seconds` changes that wait. For an
-issue-owned run, the command also waits for the owner to finish settling its
-GitHub claim. Name the run when more than one is active.
+state and run ledger to settle. `--grace-seconds` changes that wait. Name the
+run when more than one is active.
 
 If grace expires, `stop <run-id> --force` can terminate the identified owner
 and its process tree. The command refuses to kill when it cannot safely
