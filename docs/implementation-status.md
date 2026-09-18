@@ -1,13 +1,13 @@
 # Specification implementation status
 
-Version 0.11.0, 2026-09-17. The contracts remain in `docs/specs/`; this page
+Version 0.12.0, 2026-09-18. The contracts remain in `docs/specs/`; this page
 maps them to the implementation and its verification boundaries.
 
 | Specification | Implementation | Regression coverage |
 | --- | --- | --- |
 | Builder continuity | Per-piece builder sessions, cold-start reasons, poison handling; fresh critics | `round-guards`, `distributed-runtime` |
 | Charting | Local Markdown and native GitHub maps, claims and heartbeats, research, human dialogue, prototypes, approved handoffs | `chart` |
-| Control panel | Live evidence, run summaries, source-linked files/checks/findings and round comparisons, project registration, command execution, shared-key sessions, portable deployment examples | `panel-auth`, `panel-data`, `panel-evidence`, `panel-jobs`, `panel-server`, `run-evidence-capture`, `package` |
+| Control panel | Live evidence, run summaries, source-linked files/checks/findings and round comparisons, project registration, detached command execution with a persistent queue and configurable concurrency, shared-key sessions, portable deployment examples | `panel-auth`, `panel-data`, `panel-evidence`, `panel-jobs`, `panel-server`, `run-evidence-capture`, `package` |
 | Distributed rounds | Outbound-polling daemons, pinned bundles, lead verification, separate critic machines, capabilities, cancellation and billing recovery | `distributed-runtime`, `distributed-lead`, `distributed-rounds`, `git` |
 | First contact | Bounded execution probe, model error messages, terminal-only permission retry, packaged-install checks | `first-contact`, `package`, `session` |
 | Issue runner | Shared build loop, authenticated claims and recovery, guarded branches and PRs, interrupt settlement | `work`, `github`, `git`, `live-status-stop` |

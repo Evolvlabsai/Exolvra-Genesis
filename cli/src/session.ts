@@ -503,7 +503,7 @@ export async function preflightExecution(opts: ExecutionPreflightOptions): Promi
     const session = createSession({
       cwd: opts.cwd, sources: opts.sources, models: opts.models ?? DEFAULT_MODEL_CHOICE,
       modelSource: opts.modelSource, env: opts.env, transport: opts.transport,
-      permissionMode: mode, subagents: false, tools: ['Bash'], probeCommand: command, maxTurns: 2,
+      permissionMode: mode, subagents: false, tools: ['Bash'], probeCommand: command, maxTurns: 4,
       maxBudgetUsd: ceiling - receipt.costUsd,
       prompt: EXECUTION_PROBE_PREFIX +
         'Execute exactly this harmless Bash command once, then stop. Do not inspect or change any files. ' +
@@ -562,7 +562,10 @@ export async function preflightExecution(opts: ExecutionPreflightOptions): Promi
     if (result.reason === 'interrupted') {
       attempt.interrupted = true;
       attempt.detail = 'the permission probe was interrupted; no build was started';
-    } else if (verified && result.status === 'complete') {
+    } else if (verified && attempt.usageReported) {
+      // The matching tool result is the evidence, and the final receipt makes
+      // its spend accountable. The SDK may still end the session on its turn
+      // limit before the model adds a closing sentence.
       attempt.outcome = 'allowed';
       attempt.detail = 'the SDK Bash tool executed the no-op and returned its expected marker';
     } else if (denied) {

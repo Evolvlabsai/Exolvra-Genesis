@@ -3,7 +3,7 @@ import { ConfigError } from './exit.js';
 
 /** Identifies a bounded SDK query; prose from the model is never proof. */
 export const EXECUTION_PROBE_PREFIX = 'GENESIS_EXECUTION_PREFLIGHT\n';
-export const EXECUTION_PROBE_MAX_COST_USD = 0.10;
+export const EXECUTION_PROBE_MAX_COST_USD = 0.50;
 
 export interface ExecutionProbeResult {
   mode: PermissionMode;

@@ -63,8 +63,8 @@ concurrency:
 env:
   # Bump this when you want a newer loop. Pinned rather than floating, so a
   # release never changes what a scheduled pass does without you saying so.
-  # 0.11.0 includes run-detail evidence, the control panel, and execution preflight.
-  EXOLVRA_GENESIS_VERSION: '0.11.0'
+  # 0.12.0 includes durable panel execution with a persistent queue, run-detail evidence, and the control panel.
+  EXOLVRA_GENESIS_VERSION: '0.12.0'
   # The cost cap, in US dollars, for one issue.
   MAX_COST: '5'
 

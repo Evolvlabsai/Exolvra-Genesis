@@ -94,8 +94,30 @@ uses the run's saved models and provider session. Availability follows recorded
 ownership and liveness; an unavailable resume is not offered as a successful
 action. Commands show their actual output and exit status, including startup
 failures before a run record exists. Closing the browser does not stop work.
-Stopping the dashboard with Ctrl+C or SIGTERM asks its owned commands to settle;
-commands started outside the panel remain under their original owner's control.
+Commands started outside the panel remain under their original owner's control.
+
+### Durable execution and the queue
+
+Every command the panel starts is a detached process. It keeps running when
+the dashboard stops, whether by Ctrl+C, SIGTERM or a crash, and it writes its
+own output and exit receipt under `.exolvra-genesis/control-panel/jobs/`. A
+restarted dashboard adopts those commands from their records: it shows their
+later output, verifies the process identity before trusting a PID, records the
+real exit code from the receipt, and can still stop them. A process that is
+gone without a receipt is reported as interrupted, never as succeeded.
+
+Paid commands (`run`, `plan`, `resume` and `chart`) wait in a persistent queue.
+One paid command runs per project at a time, and `--concurrency` sets how many
+run at once across all projects (default 1). Queued commands start in arrival
+order when a slot is free, also after a panel restart, because the queue is
+recorded on disk with the exact arguments each command was accepted with.
+A queued command can be cancelled from its page; a running one is stopped, not
+cancelled. `doctor` and `stop` never queue.
+
+When the dashboard exits it lists the commands that continue in the background.
+Use the panel again to observe them, or `exolvra-genesis stop -C <project>` to
+end a run. In a container, the container's own lifetime bounds every process,
+so settle work before recreating one.
 
 Panel registrations and bounded command receipts are stored under the initial
 project's `.exolvra-genesis/control-panel/`. Run evidence stays in its existing
@@ -171,7 +193,7 @@ package that includes the compiled CLI, panel assets and plugin files. Transfer
 that tarball to the server, then install it there, substituting its actual path:
 
 ```sh
-sudo npm install --prefix /opt/genesis /absolute/path/exolvra-genesis-0.11.0.tgz
+sudo npm install --prefix /opt/genesis /absolute/path/exolvra-genesis-0.12.0.tgz
 ```
 
 The service example invokes `/usr/bin/node` with
@@ -310,27 +332,29 @@ image-specific defaults. See Docker's
 [container-run reference](https://docs.docker.com/reference/cli/docker/container/run/).
 
 Settle active commands through the panel before replacing or stopping a
-container. Container termination can end remaining child processes, so a
-recorded pending command is not proof that its final provider receipt has
-arrived. Preserve the mounted project data when recreating containers.
+container. Container termination ends every process inside it, including
+detached commands, so a recorded pending command is not proof that its final
+provider receipt has arrived. Preserve the mounted project data when
+recreating containers.
 
 ## Shutdown, upgrades and key rotation
 
-Stop active commands in the panel and wait for their outcome and billing to
-settle before maintenance. `systemctl stop control-panel.service` sends SIGTERM
-to the dashboard, which requests graceful settlement of commands it owns.
-After 15 seconds without settlement, the dashboard reports pending commands
-instead of inventing a successful stop.
+The dashboard can stop and restart while commands continue.
+`systemctl stop control-panel.service` sends SIGTERM to the dashboard, which
+exits promptly and leaves its detached commands running; the restarted
+dashboard adopts them, and queued commands resume in order. Their output and
+exit receipts are written by the commands themselves, not by the dashboard.
 
 The example uses `KillMode=mixed` and `SendSIGKILL=no`: systemd signals the
-dashboard first and does not force-kill remaining command processes when the
-dashboard exits. Remaining children can keep settling. systemd refuses to
-restart this service while those prior processes remain; inspect the journal
-and the run's recorded owner before taking further action. This behavior is
-defined in the [systemd kill reference](https://github.com/systemd/systemd/blob/main/man/systemd.kill.xml).
+dashboard only and never force-kills the remaining command processes. systemd
+may log the remaining processes as left over when the service starts again;
+that is expected. Do not use `KillMode=control-group` for this service. This
+behavior is defined in the
+[systemd kill reference](https://github.com/systemd/systemd/blob/main/man/systemd.kill.xml).
 
-After commands settle, stop the service, update the installed package or the
-access key in `/etc/genesis/panel.env`, and start it again. Keep the same `-C`
-directory to preserve the project registry and command receipts. Share a new
-key with authorized members; previous browser sessions end with the restart.
+To upgrade, stop the service, update the installed package or the access key in
+`/etc/genesis/panel.env`, and start it again. A command that is already
+running keeps the code it loaded at start. Keep the same `-C` directory to
+preserve the project registry, the queue and command receipts. Share a new key
+with authorized members; previous browser sessions end with the restart.
 Project ledgers and artifacts remain in each registered project directory.

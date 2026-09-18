@@ -62,8 +62,8 @@ test('the execution probe requires actual matching Bash results and accounts for
   assert.deepEqual(calls[0].options.tools, ['Bash']);
   assert.deepEqual(calls[0].options.settingSources, ['project']);
   assert.equal(calls[0].options.permissionMode, 'bypassPermissions');
-  assert.equal(calls[0].options.maxTurns, 2);
-  assert.equal(calls[0].options.maxBudgetUsd, 0.1);
+  assert.equal(calls[0].options.maxTurns, 4);
+  assert.equal(calls[0].options.maxBudgetUsd, 0.5);
   assert.equal(calls[0].options.agents, undefined);
   assert.equal(calls[0].options.allowDangerouslySkipPermissions, true);
 });
@@ -80,7 +80,7 @@ test('the probe hook denies mutations and repeats without granting the no-op ext
   assert.equal((await hook({ ...input, tool_input: { command: 'touch unwanted' } })).hookSpecificOutput.permissionDecision, 'deny');
 });
 
-for (const outcome of ['prose', 'unmatched', 'stopped']) {
+for (const outcome of ['prose', 'unmatched']) {
   test('the probe refuses ' + outcome + ' evidence before a lead can start', async () => {
     await assert.rejects(preflightExecution(options({ transport: probeTransport([outcome]) })), (error) => {
       assert.ok(error instanceof ExecutionPreflightError);
@@ -156,6 +156,15 @@ test('an exhausted probe budget makes no SDK request', async () => {
   const calls = [];
   await assert.rejects(preflightExecution(options({ maxBudgetUsd: 0, transport: probeTransport(['allowed'], calls) })), /no remaining cost budget/);
   assert.equal(calls.length, 0);
+});
+
+test('a probe whose command returned its marker passes even when the SDK ends on its turn limit', async () => {
+  const calls = [];
+  const receipt = await preflightExecution(options({ transport: probeTransport(['stopped'], calls) }));
+  assert.equal(calls.length, 1);
+  assert.equal(receipt.attempts[0].outcome, 'allowed');
+  assert.equal(receipt.attempts[0].usageReported, true);
+  assert.equal(receipt.costUsd, 0.012);
 });
 
 for (const outcome of ['truncated', 'interrupted']) {

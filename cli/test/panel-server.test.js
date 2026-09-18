@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -12,14 +12,18 @@ import { PanelProjects } from '../dist/panel-projects.js';
 import { appendRun, runDirectory, writeState } from '../dist/runs-store.js';
 import { openTrace } from '../dist/trace-store.js';
 import { panelAccess, panelChildEnvironment, panelPublicUrl } from '../dist/panel-config.js';
-import { BIN, PACKAGE_ROOT } from './run-cli.js';
+import { pidExists } from '../dist/trace-store.js';
+import { BIN, PACKAGE_ROOT, createSandbox } from './run-cli.js';
+import { PANEL_SDK } from './panel-sdk-fake.js';
 
 process.env.EXOLVRA_GENESIS_TRACE_ENGINE = 'ndjson';
 
+// Commands outlive a closed listener by design; cleanup waits for the ones a test left running before removing their files.
+async function settled(jobs, ms = 15000) { const deadline = Date.now() + ms; while (jobs.some(job => job.pid !== null && pidExists(job.pid)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50)); }
 async function fixture(t, options = {}) {
   const root = mkdtempSync(join(tmpdir(), 'genesis-panel-http-'));
   const panel = await startPanelServer({ root, port: 0, ...options });
-  t.after(async () => { await panel.close(); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 40 }); });
+  t.after(async () => { await settled(await panel.close()); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 40 }); });
   const get = (path, options = {}) => fetch(panel.localUrl + path, { signal: AbortSignal.timeout(10000), ...options });
   const csrfToken = (await (await get('/api/session')).json()).csrfToken;
   const send = (path, value, method = 'POST') => get(path, { method, headers: { 'Content-Type': 'application/json', 'X-Genesis-CSRF': csrfToken }, ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
@@ -263,4 +267,30 @@ test('child processes never inherit panel credentials under Windows environment-
   const output = execFileSync(process.execPath, ['-e', 'process.stdout.write(JSON.stringify({keys:Object.keys(process.env).filter(k=>k.toUpperCase()==="EXOLVRA_GENESIS_PANEL_TOKEN"),marker:process.env.GENESIS_TEST_MARKER}))'], { windowsHide: true, encoding: 'utf8', env: panelChildEnvironment(original) });
   assert.deepEqual(JSON.parse(output), { keys: [], marker: 'kept' });
   assert.equal(original.EXOLVRA_GENESIS_PANEL_TOKEN, 'upper-case-private-key');
+});
+
+test('queued commands are visible and cancellable through the API, and a paid command outlives its listener', async t => {
+  const sandbox = createSandbox(); writeFileSync(join(sandbox.root, 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'index.js'), PANEL_SDK);
+  for (const name of readdirSync(join(PACKAGE_ROOT, 'node_modules')).filter(n => n !== '.bin' && n !== '@anthropic-ai')) symlinkSync(join(PACKAGE_ROOT, 'node_modules', name), join(sandbox.root, 'node_modules', name), 'junction');
+  t.after(() => sandbox.cleanup());
+  const env = { ...process.env, EXOLVRA_GENESIS_AUTO_RESUMES: '0', PANEL_HOLD: '1' };
+  const { root, panel, get, send } = await fixture(t, { cliPath: sandbox.bin, env, concurrency: 1 });
+  const overview = await (await get('/api/overview')).json(); assert.equal(overview.concurrency, 1);
+  const projectId = overview.projects[0].id;
+  const run = (await (await send('/api/jobs', { action: 'run', projectId, input: 'hold the only slot' })).json()).job;
+  const plan = (await (await send('/api/jobs', { action: 'plan', projectId, input: 'waits' })).json()).job;
+  assert.equal(plan.status, 'queued');
+  assert.equal((await send('/api/jobs/' + run.id, undefined, 'DELETE')).status, 409, 'a running command is stopped, never cancelled');
+  assert.equal((await send('/api/jobs/missing', undefined, 'DELETE')).status, 404);
+  const cancelled = await send('/api/jobs/' + plan.id, undefined, 'DELETE'); assert.equal(cancelled.status, 200); assert.equal((await cancelled.json()).job.status, 'cancelled');
+  const poll = async (server, id, accept) => { const deadline = Date.now() + 15000; for (;;) { const job = (await (await fetch(server.localUrl + '/api/jobs/' + id, { signal: AbortSignal.timeout(10000) })).json()).job; if (accept(job)) return job; if (Date.now() > deadline) throw new Error('condition did not arrive: ' + JSON.stringify(job)); await new Promise(resolve => setTimeout(resolve, 100)); } };
+  await poll(panel, run.id, job => job.runId !== null && job.output.some(line => line.text.includes('main waiting')));
+  const continuing = await panel.close(); assert.equal(continuing.length, 1); assert.equal(continuing[0].id, run.id);
+  const second = await startPanelServer({ root, port: 0, cliPath: sandbox.bin, env }); t.after(async () => settled(await second.close()));
+  const adopted = await poll(second, run.id, job => job.status === 'running'); assert.match(adopted.error, /earlier panel session/);
+  const csrf = (await (await fetch(second.localUrl + '/api/session')).json()).csrfToken;
+  const stop = (await (await fetch(second.localUrl + '/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Genesis-CSRF': csrf }, body: JSON.stringify({ action: 'stop', projectId, runId: adopted.runId }) })).json()).job;
+  await poll(second, stop.id, job => !['starting', 'running'].includes(job.status));
+  const result = await poll(second, run.id, job => !['starting', 'running'].includes(job.status));
+  assert.equal(result.status, 'interrupted'); assert.equal(typeof result.exitCode, 'number');
 });

@@ -12,7 +12,7 @@ import { readPanelAgents, readPanelEvents, readPanelProject, readPanelRunDetail,
 import { PanelJobManager } from './panel-jobs.js';
 import { PanelProjects, type RegisteredProject } from './panel-projects.js';
 import { readRuns } from './runs-store.js';
-import type { PanelJobRequest, PanelOverview, PanelProject } from './panel-types.js';
+import type { PanelJob, PanelJobRequest, PanelOverview, PanelProject } from './panel-types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VERSION = (createRequire(import.meta.url)('../package.json') as { version: string }).version;
@@ -57,8 +57,9 @@ function pageNumber(url: URL, name: string, maximum: number): number | undefined
   return number;
 }
 
-export interface PanelServerOptions { root: string; port?: number; cliPath?: string; env?: NodeJS.ProcessEnv; host?: string; publicUrl?: string; token?: string }
-export interface PanelServer { url: string; localUrl: string; close(): Promise<void> }
+export interface PanelServerOptions { root: string; port?: number; cliPath?: string; env?: NodeJS.ProcessEnv; host?: string; publicUrl?: string; token?: string; concurrency?: number }
+/** `close` resolves to the commands that continue detached after the listener is gone. */
+export interface PanelServer { url: string; localUrl: string; close(): Promise<PanelJob[]> }
 
 /** An authenticated browser transport for the existing CLI. Page loads never run models. */
 export async function startPanelServer(options: PanelServerOptions): Promise<PanelServer> {
@@ -67,7 +68,7 @@ export async function startPanelServer(options: PanelServerOptions): Promise<Pan
   const auth = new PanelAuth({ token: access.token, secure: access.secure });
   const projects = new PanelProjects(options.root);
   const jobEnv = panelChildEnvironment(env);
-  const jobs = new PanelJobManager({ root: options.root, cliPath: options.cliPath ?? join(HERE, 'cli.js'), env: jobEnv });
+  const jobs = new PanelJobManager({ root: options.root, cliPath: options.cliPath ?? join(HERE, 'cli.js'), env: jobEnv, ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency }) });
   const startedAt = Date.now();
   let port = 0;
   let closing = false;
@@ -98,7 +99,7 @@ export async function startPanelServer(options: PanelServerOptions): Promise<Pan
     try { agents = readPanelAgents(env); } catch (error) { errors.push(scrubPanelText(String(error))); }
     try { events = readPanelEvents(registered, 100); } catch (error) { errors.push(scrubPanelText(String(error))); }
     cached = {
-      version: VERSION, startedAt, now: Date.now(), projects: rows, runs, agents, events, jobs: jobs.list(),
+      version: VERSION, startedAt, now: Date.now(), projects: rows, runs, agents, events, jobs: jobs.list(), concurrency: jobs.limit,
       models: listModels().map(({ value, label }) => ({ value, label })), agentModels: [...AGENT_MODELS],
       totals: {
         running: runs.filter((r) => r.status === 'running').length,
@@ -174,6 +175,13 @@ export async function startPanelServer(options: PanelServerOptions): Promise<Pan
       if (!job) throw new HttpError(404, 'Command not found.');
       json(res, 200, { job }); return;
     }
+    if (method === 'DELETE' && jobMatch) {
+      if (!jobs.get(jobMatch[1]!)) throw new HttpError(404, 'Command not found.');
+      let job: PanelJob;
+      try { job = jobs.cancel(jobMatch[1]!); } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
+      cached = undefined;
+      json(res, 200, { job }); return;
+    }
     if (method === 'POST' && pathname === '/api/jobs') {
       const request = await body(req);
       if (typeof request.projectId !== 'string') throw new HttpError(400, 'Select a project.');
@@ -245,7 +253,7 @@ export async function startPanelServer(options: PanelServerOptions): Promise<Pan
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('No local server address.');
   port = address.port;
-  let closePromise: Promise<void> | undefined;
+  let closePromise: Promise<PanelJob[]> | undefined;
   return {
     url: access.publicUrl ?? 'http://' + (access.host.includes(':') ? '[::1]' : '127.0.0.1') + ':' + port,
     localUrl: 'http://' + (access.host.includes(':') ? '[::1]' : '127.0.0.1') + ':' + port,
@@ -254,7 +262,8 @@ export async function startPanelServer(options: PanelServerOptions): Promise<Pan
         closing = true;
         const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
         server.closeAllConnections();
-        await Promise.all([jobs.close(), stopped]);
+        const [continuing] = await Promise.all([jobs.close(), stopped]);
+        return continuing;
       })();
       return closePromise;
     },

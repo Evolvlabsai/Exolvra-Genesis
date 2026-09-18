@@ -27,7 +27,8 @@ export function reportChecks(cwd: string, report: string, command: string, touch
     const safe = !isAbsolute(path) && !relative(cwd, absolute).startsWith('..');
     const deleted = /\bdeleted\b/i.test(row);
     names.push(path.replaceAll('\\', '/'));
-    checks.push(check('report.path', path, safe && (deleted ? !existsSync(absolute) : existsSync(absolute)), 'reported path does not match disk: ' + path));
+    checks.push(check('report.path', path, safe && (deleted ? !existsSync(absolute) : existsSync(absolute)),
+      !safe ? 'reported path must be relative to the project root, not absolute or outside it: ' + path : 'reported path does not match disk: ' + path));
   }
   checks.push(check('report.files', 'FILES CHANGED section', sections['FILES CHANGED'] !== undefined, 'FILES CHANGED is missing'));
   const commands = (sections['COMMANDS RUN'] ?? '').split('\n').map((s) => s.trim().replace(/^[-*]\s+/, '').replace(/^`|`$/g, ''));

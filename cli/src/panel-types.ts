@@ -77,7 +77,8 @@ export interface PanelJob {
   projectId: string;
   projectName: string;
   action: PanelAction;
-  status: 'starting' | 'running' | 'succeeded' | 'failed' | 'interrupted';
+  /** A queued job waits for an execution slot; cancelled jobs never started. */
+  status: 'queued' | 'starting' | 'running' | 'succeeded' | 'failed' | 'interrupted' | 'cancelled';
   createdAt: number;
   finishedAt: number | null;
   runId: string | null;
@@ -96,6 +97,8 @@ export interface PanelOverview {
   agents: PanelAgent[];
   events: PanelEvent[];
   jobs: PanelJob[];
+  /** How many paid commands may run at once across all projects. */
+  concurrency: number;
   models: { value: string; label: string }[];
   agentModels: string[];
   totals: { running: number; blocked: number; complete: number; stopped: number; costUsd: number | null; inputTokens: number; outputTokens: number };

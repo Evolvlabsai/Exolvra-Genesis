@@ -21,8 +21,8 @@ ExecStart=/usr/bin/node /opt/genesis/node_modules/exolvra-genesis/dist/cli.js da
 Restart=on-failure
 RestartSec=5s
 UMask=0077
-# Let the dashboard coordinate command shutdown and final billing. Never kill
-# pending children automatically; they must settle before systemd can restart.
+# Commands are detached from the dashboard and continue across its restarts.
+# Signal the dashboard only; never kill its children automatically.
 KillSignal=SIGTERM
 KillMode=mixed
 SendSIGKILL=no

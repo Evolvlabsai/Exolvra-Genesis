@@ -146,7 +146,9 @@ or build it from the repo: `cd cli && npm install && npm run build && npm link`.
 
 Start the control panel with `exolvra-genesis dashboard --open`.
 It shows operations, projects, runs, agent definitions, live events and usage,
-and can launch builds and plans or stop and resume existing runs. See the
+and can launch builds and plans or stop and resume existing runs. Commands it
+starts continue if the panel restarts, and paid commands wait in a persistent
+queue (`--concurrency` sets how many run at once). See the
 [control panel guide](docs/control-panel.md) for setup and controls, including
 shared access, HTTPS proxies, containers and service deployments. Shared members
 sign in with a workspace access key; deployment settings are configurable.

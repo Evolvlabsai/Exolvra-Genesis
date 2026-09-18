@@ -116,3 +116,15 @@ refuses the build. Headless failures never prompt. `plan` has no probe.
 
 The hard gate's zero-model-spend assertion now means zero **build** spend before
 permission is demonstrated; bounded probe spend is expected and must be visible.
+
+Ceiling correction, 2026-09-18: the first real Opus 5 probe reported
+$0.156694 for 3 input and 113 output tokens — the cache write of the session's
+system prompt dominates — and the SDK stopped it at the $0.10 budget before the
+command ran, so every run on an Opus lead was refused. The requested probe
+budget is now at most $0.50 (or the smaller remaining run budget). The second
+real probe executed the command and returned the marker, then the SDK ended
+the session on its two-turn limit before the model's closing sentence, and the
+implementation refused it. The matching tool result is the evidence the
+amendment requires, so a verified marker now passes regardless of how the
+session ended, unless it was interrupted; the probe allows four turns.
+Everything else in this amendment stands.

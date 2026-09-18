@@ -26,6 +26,7 @@ const icons = {
   external: '<path d="M14 3h7v7M21 3 10 14M10 3H3v18h18v-7"/>', trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
 };
 const icon = (name) => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (icons[name] || icons.file) + '</svg>';
+const LIVE = ['queued', 'starting', 'running'];
 const nav = [['operations', 'Operations'], ['runs', 'Runs'], ['plans', 'Plans'], ['projects', 'Projects'], ['agents', 'Agents'], ['telemetry', 'Telemetry'], ['events', 'Events'], ['settings', 'Settings']];
 const storage = {
   get(key, fallback) { try { return localStorage.getItem('genesis.' + key) ?? fallback; } catch { return fallback; } },
@@ -245,15 +246,15 @@ function refreshView() {
   const data = state.overview, [page, first] = state.route.split('/').map(decodePart);
   $('#version').textContent = 'v' + data.version;
   $('#nav-count-runs').textContent = data.totals.running ? String(data.totals.running) : '';
-  $('#nav-count-plans').textContent = data.jobs.filter((job) => job.action === 'plan' && ['running', 'starting'].includes(job.status)).length || '';
+  $('#nav-count-plans').textContent = data.jobs.filter((job) => job.action === 'plan' && LIVE.includes(job.status)).length || '';
   if (page === 'operations' || (page === 'runs' && !first)) {
     patch('overview-stats', overallStats()); const runs = filteredRuns(data.runs); patch('runs-table', runsTable(page === 'operations' ? runs.slice(0, 8) : runs, page === 'operations'));
     if ($('#recent-count')) $('#recent-count').textContent = String(data.runs.length);
     if ($('#run-results')) $('#run-results').textContent = runs.length + ' of ' + data.runs.length + ' runs';
     if ($('#recent-source')) $('#recent-source').textContent = state.polling ? 'AUTO-REFRESH · 2s' : 'REFRESH PAUSED';
     patch('recent-activity', panel('Recent activity', activity(data.events), { action: '<a class="text-button" href="#events">View all ↗</a>' }));
-    patch('workspace-card', panel('Workspace', '<div class="panel-body">' + infoRows([['Projects', data.projects.length + ' registered'], ['Agent roles', data.agents.length], ['Active jobs', data.jobs.filter((job) => ['starting', 'running'].includes(job.status)).length], ['Mode', state.requiresLogin ? 'Server execution' : 'Local execution']]) + '<div class="actions spaced-actions">' + button('Add project', 'add-project', 'plus') + '</div></div>'));
-    const activeJobs = data.jobs.filter((job) => ['running', 'starting'].includes(job.status)); patch('active-jobs', activeJobs.length ? panel('Command jobs in progress', jobTable(activeJobs), { count: activeJobs.length }) : '');
+    patch('workspace-card', panel('Workspace', '<div class="panel-body">' + infoRows([['Projects', data.projects.length + ' registered'], ['Agent roles', data.agents.length], ['Active jobs', data.jobs.filter((job) => ['starting', 'running'].includes(job.status)).length], ['Queued jobs', data.jobs.filter((job) => job.status === 'queued').length], ['Execution slots', data.concurrency], ['Mode', state.requiresLogin ? 'Server execution' : 'Local execution']]) + '<div class="actions spaced-actions">' + button('Add project', 'add-project', 'plus') + '</div></div>'));
+    const activeJobs = data.jobs.filter((job) => LIVE.includes(job.status)); patch('active-jobs', activeJobs.length ? panel('Command jobs in progress', jobTable(activeJobs), { count: activeJobs.length }) : '');
   } else if (page === 'plans') { const plans = data.jobs.filter((job) => job.action === 'plan'); patch('plans-list', panel('Planning sessions', jobTable(plans), { count: plans.length })); const others = data.jobs.filter((job) => job.action !== 'plan'); patch('other-jobs', others.length ? panel('Other command jobs', jobTable(others), { count: others.length }) : ''); }
   else if (page === 'projects' && !first) patch('projects-grid', projectCards());
   else if (page === 'projects' && first) renderProject(first);
@@ -450,12 +451,12 @@ function renderJob() {
   const job = state.job; if (!job) return;
   const previousOutput = $('#job-output-scroll');
   const atEnd = !previousOutput || previousOutput.scrollHeight - previousOutput.scrollTop - previousOutput.clientHeight < 40;
-  patch('job-heading', heading(human(job.action)[0].toUpperCase() + human(job.action).slice(1) + ' session', job.projectName + ' · ' + job.id, actions([badge(job.status), button('Export JSON', 'export-job', 'export'), ...(['starting', 'running'].includes(job.status) ? [button('Stop command', 'stop-job', 'stop', false, 'data-project="' + escape(job.projectId) + '"' + (job.runId ? ' data-run="' + escape(job.runId) + '"' : ''))] : [])]), 'Command execution'));
+  patch('job-heading', heading(human(job.action)[0].toUpperCase() + human(job.action).slice(1) + ' session', job.projectName + ' · ' + job.id, actions([badge(job.status), button('Export JSON', 'export-job', 'export'), ...(job.status === 'queued' ? [button('Cancel', 'cancel-job', 'close', false, 'data-job="' + escape(job.id) + '"')] : ['starting', 'running'].includes(job.status) ? [button('Stop command', 'stop-job', 'stop', false, 'data-project="' + escape(job.projectId) + '"' + (job.runId ? ' data-run="' + escape(job.runId) + '"' : ''))] : [])]), 'Command execution'));
   const output = job.output.map((entry) => '<div class="output-line ' + (entry.stream === 'stderr' ? 'stderr' : '') + '">' + escape(entry.text) + '</div>').join('');
-  patch('job-output', panel('Command output', (job.error ? '<div class="warning-note inset-warning">' + escape(job.error) + '</div>' : '') + (output ? '<div class="output" id="job-output-scroll" data-preserve-scroll>' + output + '</div>' : empty('Waiting for command output', 'The command is starting. Its actual output will appear here.', 'terminal', '', true)), { action: '<span class="subheading">STDOUT / STDERR</span>' }));
+  patch('job-output', panel('Command output', (job.error ? '<div class="warning-note inset-warning">' + escape(job.error) + '</div>' : '') + (output ? '<div class="output" id="job-output-scroll" data-preserve-scroll>' + output + '</div>' : job.status === 'queued' ? empty('Waiting for an execution slot', 'This command starts when a slot is free and no other command is active for its project. It stays queued if the panel restarts.', 'clock', '', true) : empty('Waiting for command output', 'The command is starting. Its actual output will appear here.', 'terminal', '', true)), { action: '<span class="subheading">STDOUT / STDERR</span>' }));
   const currentOutput = $('#job-output-scroll');
   if (atEnd && currentOutput) currentOutput.scrollTop = currentOutput.scrollHeight;
-  patch('job-info', panel('Job details', '<div class="panel-body">' + infoRows([['Action', job.action], ['Project', job.projectName], ['Started', date(job.createdAt)], ['Finished', job.finishedAt ? date(job.finishedAt) : '—'], ['Exit code', job.exitCode], ['Process ID', job.pid]]) + (job.runId ? '<div class="actions spaced-actions"><a class="button primary" href="#runs/' + encodeURIComponent(job.projectId) + '/' + encodeURIComponent(job.runId) + '">Open run ' + icon('arrow') + '</a></div>' : '') + '<p class="small-note">This is the command’s recorded output. A successful plan previews work; it does not mean a build has completed.</p></div>'));
+  patch('job-info', panel('Job details', '<div class="panel-body">' + infoRows([['Action', job.action], ['Project', job.projectName], ['Started', date(job.createdAt)], ['Finished', job.finishedAt ? date(job.finishedAt) : '—'], ['Exit code', job.exitCode], ['Process ID', job.pid]]) + (job.runId ? '<div class="actions spaced-actions"><a class="button primary" href="#runs/' + encodeURIComponent(job.projectId) + '/' + encodeURIComponent(job.runId) + '">Open run ' + icon('arrow') + '</a></div>' : '') + '<p class="small-note">This is the command’s recorded output. A successful plan previews work; it does not mean a build has completed. Commands continue if the panel stops; a restarted panel adopts them.</p></div>'));
 }
 
 function modal(title, description, body, footer, formId) {
@@ -528,6 +529,7 @@ document.addEventListener('click', async (event) => {
   else if (action === 'resume-run') openJob('resume', projectId, '', runId);
   else if (action === 'stop-run') openStop(projectId, runId);
   else if (action === 'stop-job') openStop(projectId, runId, true);
+  else if (action === 'cancel-job') { try { await api('/api/jobs/' + encodeURIComponent(element.dataset.job), { method: 'DELETE' }); notify('Queued command cancelled.'); await refresh(true); } catch (error) { notify(error.message, true); } }
   else if (action === 'add-project') openAddProject();
   else if (action === 'remove-project') openRemoveProject(projectId);
   else if (action === 'project') location.hash = 'projects/' + encodeURIComponent(projectId);

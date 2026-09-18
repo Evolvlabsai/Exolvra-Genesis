@@ -79,3 +79,23 @@ Per-person accounts, role-based permissions, SSO, interactive interviews and
 GitHub issue-runner administration are outside this control-panel increment.
 Existing CLI workflows remain available from the terminal. Deployment examples
 are reviewable artifacts; no particular production instance is deployed.
+
+## Addendum A — Durable execution (0.12.0)
+
+- A1. Commands the panel starts are detached from the dashboard process. They
+  continue when the dashboard stops for any reason. Their output and exit
+  receipt are written by the command's launcher into
+  `.exolvra-genesis/control-panel/jobs/`, never by the dashboard.
+- A2. A restarted dashboard adopts recorded commands: it folds in later
+  output from the exact byte where the previous dashboard stopped, verifies
+  process identity (PID plus start time) before trusting a PID, settles on the
+  exit receipt's real code, and can still request a stop. A process gone
+  without a matching receipt is reported as interrupted.
+- A3. Paid commands wait in a persistent queue recorded with the exact
+  arguments they were accepted with. One paid command runs per project at a
+  time; `--concurrency` bounds paid commands across projects (default 1).
+  Arrival order survives restarts. Queued commands can be cancelled; running
+  commands are stopped, never cancelled. Read-only and control commands never
+  queue.
+- A4. The dashboard reports the commands that continue when it exits. The
+  panel never kills a command it started.

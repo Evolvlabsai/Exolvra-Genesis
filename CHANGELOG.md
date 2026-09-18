@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.0 — 2026-09-18
+
+- Commands the control panel starts are detached processes with their own
+  output files and exit receipts. They continue when the dashboard stops, and
+  a restarted dashboard adopts them: later output, verified process identity,
+  the real exit code, and stop still work. A process gone without a receipt
+  is reported as interrupted, never as succeeded.
+- Paid commands wait in a persistent queue: one per project at a time, and
+  `dashboard --concurrency` sets how many run at once across projects
+  (default 1). The queue keeps arrival order across restarts and records each
+  command's exact arguments. Queued commands can be cancelled
+  (`DELETE /api/jobs/<id>`); running commands are stopped, not cancelled.
+- The dashboard lists the commands that continue when it exits. The deployment
+  guide and service example describe restarts and upgrades while work runs.
+- The execution preflight's probe budget is $0.50 instead of $0.10. On an Opus
+  lead the first turn alone costs about $0.16, so the old ceiling refused every
+  run before the probe command could execute. A probe whose command returned
+  its marker now passes even when the SDK ends the session on its turn limit
+  before the model's closing sentence; the probe allows four turns.
+
 ## 0.11.0 — 2026-09-17
 
 - Run detail now leads with the recorded outcome, latest activity, blocking

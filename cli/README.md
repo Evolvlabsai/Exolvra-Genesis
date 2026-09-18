@@ -31,6 +31,8 @@ in your project shows every round while it happens. `runs` lists past runs;
 For a browser interface, run `exolvra-genesis dashboard --open`. The
 control panel shows projects, run history, live events, agent definitions and
 measured usage. Start builds or plans and stop or resume work from the panel.
+Commands it starts continue if the panel stops, and paid commands wait in a
+persistent queue; `--concurrency 2` lets two run at once across projects.
 Use `-C /path/to/project` to select the initial project and `--port 4317` to
 choose the port. For shared access, configure `EXOLVRA_GENESIS_PANEL_TOKEN`
 and `--public-url` behind an HTTPS reverse proxy. Members sign in with that
