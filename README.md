@@ -63,13 +63,14 @@ block), so every run on every machine gets the same card.
 
 Exolvra Genesis shows you the bar and the piece list, then waits. Reply `go`
 to start the loop. Add this to your project's `.gitignore`, so everything a
-run writes stays out of git while the standards and named goals your repo owns
-stay in it:
+run writes stays out of git while the standards, named goals and decision
+maps your repo owns stay in it:
 
 ```
 /.exolvra-genesis/*
 !/.exolvra-genesis/standards.md
 !/.exolvra-genesis/goals/
+!/.exolvra-genesis/map/
 ```
 
 ## Running from a spec
@@ -124,14 +125,15 @@ that, shipped.
 `cli/` holds `exolvra-genesis`, a thin TypeScript CLI on the Claude Agent SDK
 that runs the loop without opening Claude Code. It is transport and
 ergonomics only: the plugin markdown stays the single source of truth. The
-CLI loads `commands/run.md` and both agent files from the installed package
-at runtime (`EXOLVRA_GENESIS_PLUGIN_DIR` or `--plugin-dir` override the
-location), so the two cannot drift.
+CLI loads the plugin's commands, agents and page templates from the installed
+package at runtime (`EXOLVRA_GENESIS_PLUGIN_DIR` or `--plugin-dir` override
+the location), so the two cannot drift.
 
 An unattended build executes commands and therefore uses
 `--permission-mode bypassPermissions` by default; the first execution refusal
 names that flag and its remedy. `run`, `resume`, and `work` first make a bounded
-SDK permission probe (requesting a provider budget of at most $0.10 across attempts), and record the actual
+SDK permission probe (requesting a provider budget of at most $0.50 across
+attempts; an Opus first turn alone costs about $0.16), and record the actual
 command result and spend; `plan` keeps its cautious default and skips the probe.
 An unavailable model names whether it came from `--model`, the environment, or
 your saved default, and suggests accepted model ids.
@@ -211,6 +213,33 @@ was stopped by a budget guard, **2** the invocation itself has to change.
 cover the rest. There is no flag table in this README because `--help` makes
 one unnecessary.
 
+### Decision maps and run operations
+
+`exolvra-genesis chart "An uncertain destination"` turns unanswered design
+questions into a persistent decision map. `chart status` shows its frontier
+and remaining fog; `chart "Ticket name"` resolves one question. Human tickets
+require a live exchange. Independent research can run in parallel, and a
+cleared map hands off a spec, named goals, or ready-labeled runner issues only
+after approval. Local maps are editable markdown; GitHub mode uses native
+child issues, dependencies and assignees. See [the charting guide](docs/charting.md)
+and [the issue-runner dogfood map](.exolvra-genesis/map/MAP.md).
+
+`exolvra-genesis trace <run-id>` reads the run's events and model spend.
+Local session totals and distributed round costs retain exact provider
+receipts; nested local piece/round dollar splits are shown as unavailable.
+`status` reports active runs, `stop` requests a graceful stop, and
+`doctor --read-only` checks local execution prerequisites without contacting
+the provider. `run --coordinator <shared-directory>` opts into distributed
+rounds with isolated worker checkouts and explicit file ownership. See the
+[distributed-rounds guide](docs/distributed-rounds.md) for worker setup and the
+[run-operations guide](docs/run-operations.md) for live evidence, inactivity
+thresholds and stopping runs.
+
+Each command's `--help` has its current flags. The
+[specification coverage](docs/implementation-status.md) page maps every spec
+to its implementation, the approved SDK adaptations, and the verification
+boundaries.
+
 ## The two contracts
 
 Everything rides on two small formats.
@@ -231,7 +260,7 @@ models in the agent frontmatter:
 
 ```yaml
 # agents/builder.md
-model: claude-opus-4-8   # strong implementer
+model: claude-opus-5   # strong implementer
 ```
 
 A recipe that has worked well: run the session (the lead) on your strongest
@@ -241,8 +270,8 @@ critics on `inherit`.
 
 ## Optional: the gates
 
-Two hook examples turn the loop's conventions into mechanisms. Copy either
-`hooks` block into your project's `.claude/settings.json` to enable it; both
+Three hook examples turn the loop's conventions into mechanisms. Copy a
+`hooks` block into your project's `.claude/settings.json` to enable it; all
 are off by default and nothing depends on them.
 
 - `hooks/verification-gate.example.json` is a Stop hook that refuses to let a
@@ -252,12 +281,15 @@ are off by default and nothing depends on them.
   the bar's sha256 pins (written to `.exolvra-genesis/runs/<run-id>/bar/bar.sha256` at
   capture) before every subagent dispatch. If the bar drifted or was tampered
   with, no builder or critic gets sent until it is restored.
+- `hooks/ownership-gate.example.json` snapshots the worktree around every
+  builder dispatch and checks that only the files a Task Spec owns changed.
+  It calls `exolvra-genesis gate`, so it needs the CLI on your PATH.
 
 ## What it is not
 
-- **Not a framework.** The plugin is two agents, two commands, and one page
-  template: plain Markdown with no config file, no state database, and no
-  required MCP servers, small enough to read in minutes. The CLI is a
+- **Not a framework.** The plugin is three commands, three agents, and two
+  page templates: plain Markdown with no config file, no state database, and
+  no required MCP servers, small enough to read in an afternoon. The CLI is a
   companion rather than a wrapper. It loads that same Markdown instead of
   reimplementing the loop, and if the two could ever drift, the design is
   wrong.
@@ -293,31 +325,6 @@ another chat window.
 
 If evidence over claims is a philosophy you want more of, the full platform
 is the same idea grown up. **[Join the waitlist](https://exolvra.ai)**
-
-## Decision maps and run operations
-
-`exolvra-genesis chart "An uncertain destination"` turns unanswered design
-questions into a persistent decision map. `chart status` shows its frontier
-and remaining fog; `chart "Ticket name"` resolves one question. Human tickets
-require a live exchange. Independent research can run in parallel, and a
-cleared map hands off a spec, named goals, or ready-labeled runner issues only
-after approval. Local maps are editable markdown; GitHub mode uses native
-child issues, dependencies and assignees. See [the charting guide](docs/charting.md)
-and [the issue-runner dogfood map](.exolvra-genesis/map/MAP.md).
-
-`exolvra-genesis trace <run-id>` reads the run's events and model spend.
-Local session totals and distributed round costs retain exact provider
-receipts; nested local piece/round dollar splits are shown as unavailable.
-`status` reports active runs, `stop` requests a graceful stop, and
-`doctor --read-only` checks local execution prerequisites without contacting
-the provider. `run --coordinator <shared-directory>` opts into distributed
-rounds with isolated worker checkouts and explicit file ownership. See the
-[distributed-rounds guide](docs/distributed-rounds.md) for worker setup and the
-[run-operations guide](docs/run-operations.md) for live evidence, inactivity
-thresholds and stopping runs.
-Use each command's `--help` for its current flags.
-See [specification coverage](docs/implementation-status.md) for the implementation
-map, approved SDK adaptations, and verification boundaries.
 
 ## Credits
 

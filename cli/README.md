@@ -10,8 +10,8 @@ runs, loaded from the same files, never reimplemented.
 npm install -g exolvra-genesis
 ```
 
-Requires Node 20+, and access to Claude (an `ANTHROPIC_API_KEY`, or a
-machine where Claude Code is logged in).
+Requires Node 18 or newer, and access to Claude (an `ANTHROPIC_API_KEY`, or
+a machine where Claude Code is logged in).
 
 ## Start here
 
@@ -45,8 +45,8 @@ An unattended build executes commands and therefore uses
 names that flag and its remedy. Before a build, a bounded SDK query executes a
 harmless Bash command under the same permissions, records its result and spend,
 and refuses if execution cannot be demonstrated. The probe requests a provider
-budget of at most $0.10 across attempts; actual spend counts toward the run budget.
-`plan` skips it and retains
+budget of at most $0.50 across attempts (an Opus first turn alone costs about
+$0.16); actual spend counts toward the run budget. `plan` skips it and retains
 its cautious default.
 
 Repos can declare a standing bar the loop always inherits
