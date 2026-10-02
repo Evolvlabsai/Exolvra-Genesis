@@ -27,10 +27,30 @@ function sdk(answers, calls = []) {
     return { async interrupt() {}, async *[Symbol.asyncIterator]() { yield { type: 'result', subtype: 'success', session_id: 'chart-session', num_turns: 1, total_cost_usd: 0.01, result: answer, errors: [] }; } };
   };
 }
-function answerWhen(io, phrase, answer) {
-  const interval = setInterval(() => { if (io.raw().includes(phrase)) { clearInterval(interval); io.input.write(answer); } }, 5);
-  interval.unref();
-  return () => clearInterval(interval);
+/**
+ * Answer a prompt the moment its text appears.
+ *
+ * The poller is deliberately left referenced. While a test awaits the command,
+ * this timer is often the only thing in the event loop: the fake transport
+ * settles on microtasks and the prompt is waiting on a stream nobody has
+ * written to yet. An unreferenced timer lets the loop drain at that moment,
+ * and `node --test` then reports the awaited promise as "still pending but the
+ * event loop has already resolved" and cancels the rest of the file — which is
+ * what the Linux runner saw while this suite passed on a developer machine.
+ *
+ * The deadline is the safety net a reference removes: a phrase that never
+ * arrives has to fail loudly and quickly rather than hang the runner.
+ */
+function answerWhen(io, phrase, answer, timeoutMs = 20_000) {
+  const stop = () => { clearInterval(interval); clearTimeout(deadline); };
+  const interval = setInterval(() => { if (io.raw().includes(phrase)) { stop(); io.input.write(answer); } }, 5);
+  const deadline = setTimeout(() => {
+    stop();
+    process.stderr.write('answerWhen: never saw ' + JSON.stringify(phrase) + ' after ' + timeoutMs + 'ms\n');
+    // Let the command settle so the test fails on its own assertion.
+    io.input.write(answer);
+  }, timeoutMs);
+  return stop;
 }
 
 test('editable map parsing resolves frontier, dependencies and manual edits', () => {

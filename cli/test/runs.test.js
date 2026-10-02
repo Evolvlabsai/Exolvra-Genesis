@@ -303,12 +303,15 @@ test('every write is a rename, so a reader never sees a half-written ledger', as
       // on Windows, is not a torn read. Unreadable JSON is.
       if (error instanceof SyntaxError) torn += 1;
     }
-    // Sampled at a random phase, and often. Two loops that both wait a fixed
-    // number of milliseconds on Windows tick on the same coarse timer and drift
-    // into step, so a reader can end up sampling the same moment of every write
-    // — and a reader that lands only between writes proves nothing about what
-    // is visible during one.
-    await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 3)));
+    // Yield without a timer, so the sampling rate is set by how fast the file
+    // can be read rather than by the clock's resolution. A `setTimeout` of a
+    // few milliseconds is clamped to the system timer on Windows — about
+    // 15.6ms — which on a CI runner, where the writer finishes in a quarter of
+    // a second, leaves only fourteen to twenty samples against the floor below.
+    // `setImmediate` has no such floor, and because it is not a timer at all it
+    // cannot drift into step with the writer's, which is what the fixed sleep
+    // was guarding against.
+    await new Promise((resolve) => setImmediate(resolve));
   }
 
   assert.equal(code, 0, 'the writer failed: ' + failure);

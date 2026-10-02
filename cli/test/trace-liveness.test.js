@@ -1468,9 +1468,17 @@ describe('liveness readout (T4c-2)', () => {
   test('a process start time is stable, and a pid that is gone has none', async () => {
     const first = processStartTime(process.pid);
     assert.equal(typeof first, 'number', 'this process must have a readable start time');
+    const second = processStartTime(process.pid);
     // A start time is a fact about a process, not a measurement of now: asked
     // twice it must give the same answer, or the comparison it feeds is noise.
-    assert.equal(processStartTime(process.pid), first);
+    // Windows reads the creation FILETIME, which is absolute, so it must not
+    // move at all. The POSIX route derives it from `ps -o etime=` — whole
+    // seconds subtracted from a moving clock — so two readings agree only to
+    // that granularity. That is the same one second trace-store.ts sizes its
+    // two-second identity bound to absorb, and asserting tighter than the
+    // source can deliver is what made this fail on the Linux runner.
+    if (process.platform === 'win32') assert.equal(second, first);
+    else assert.ok(Math.abs(second - first) <= 1000, 'POSIX readings must agree within one second: ' + first + ' then ' + second);
 
     const gone = await exitedPid();
     assert.equal(pidExists(gone), false, 'a child that has exited must not answer');
