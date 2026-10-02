@@ -2,16 +2,16 @@
 project: exolvra-genesis
 updated: 2026-10-01
 updated_by: Claude Code (Opus 5)
-health: red
+health: green
 version: v0.13.0
 default_branch: main
-ci: failing
+ci: passing
 ---
 
 # Exolvra Genesis status
 
 ## Latest
-- 2026-10-01: Exolvra Plane is now a fork, not a private superset; no merging in either direction, and CLAUDE.md says so
+- 2026-10-01: CI is green on both runners for the first time since 2026-09-17 — 1750f84
 
 ## Blocked
 - None.
@@ -23,11 +23,10 @@ ci: failing
 - None.
 
 ## Next
-- Fix Ubuntu CI: chart.test.js research fan-out test hangs on Linux and cancels the rest; red since 2026-09-17
-- Fix Ubuntu flake: trace-liveness "process start time is stable" failed once on 2026-09-18 (fb4e298); passes on Windows
 - No new public features planned; the plane no longer takes fixes from here, so each repo fixes its own
 
 ## Done
+- 2026-10-01: CI green both runners; ported three test fixes from Plane: chart poller, POSIX clock bound, ledger sampling — 1750f84
 - 2026-10-01: recorded the fork decision; the public → private merge rule is withdrawn and was never exercised
 - 2026-09-18: 0.13.0 the split: plane code, specs, models, examples, Dockerfile removed; no network in src/ — cc7e95f — released, npm
 - 2026-09-18: READMEs caught up with 0.12.0 — 25d9aab — merged
@@ -40,7 +39,6 @@ ci: failing
 ## Risks
 - The plane fixed two loop bugs this repo still has: builder path reporting, and `verdict.win` tripping on "no confirmed findings"
 - 0.13.0 breaks users of `work`, `queue`, `dashboard` from this package — CHANGELOG states it; ≤0.12.0 on npm still carry them
-- Ubuntu CI red means Linux regressions go unseen; only Windows is verified — fix listed under Next
 - npm publish needs a browser one-time password; agents cannot release alone — founder runs `npm publish`
 - Builders on Windows report absolute paths and inexact commands; the loop corrects it but it costs a round — guard message now says why
 
